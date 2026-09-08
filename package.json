@@ -5,7 +5,10 @@
   "description": "Durable provider-agnostic MCP media pipeline for image, video, audio and composition.",
   "type": "module",
   "engines": { "node": ">=20" },
-  "bin": { "ceo-mcp-media": "./dist/src/cli/index.js" },
+  "bin": {
+    "ceo-mcp-media": "./dist/src/mcp/server.js",
+    "ceo-mcp-media-cli": "./dist/src/cli/index.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
