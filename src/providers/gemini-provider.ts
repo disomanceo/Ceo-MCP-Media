@@ -14,7 +14,7 @@ function findBase64Image(value: any): string | undefined {
   }
   return undefined;
 }
-async function imageInline(file: string) { const data = await readFile(file); const ext = path.extname(file).toLowerCase(); const mimeType = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : "image/png"; return { inlineData: { mimeType, data: data.toString("base64") } }; }
+async function imageInline(file: string) { const data = await readFile(file); const ext = path.extname(file).toLowerCase(); const mimeType = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : "image/png"; return { mimeType, bytesBase64Encoded: data.toString("base64") }; }
 async function interactionImage(file: string) { const data = await readFile(file); const ext = path.extname(file).toLowerCase(); const mime_type = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : "image/png"; return { type: "image", mime_type, data: data.toString("base64") }; }
 
 export class GeminiProvider implements MediaProvider {

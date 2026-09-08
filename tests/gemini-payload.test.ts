@@ -48,10 +48,11 @@ test("Veo adapter follows current REST long-running payload", async () => {
     const result = await provider.startVideo({ prompt: "cinematic school shot", outputPath: path.join(dir, "out.mp4"), aspectRatio: "9:16", resolution: "1080p", durationSec: 4, firstFrame: first, lastFrame: last, referenceImages: [ref] });
     assert.equal(result.operationId, "operations/test-operation");
     assert.match(calls[0].url, /veo-3\.1-generate-preview:predictLongRunning$/);
-    assert.ok(calls[0].body.instances[0].image?.inlineData?.data);
-    assert.ok(calls[0].body.instances[0].lastFrame?.inlineData?.data);
+    assert.ok(calls[0].body.instances[0].image?.bytesBase64Encoded);
+    assert.ok(calls[0].body.instances[0].lastFrame?.bytesBase64Encoded);
     assert.equal(calls[0].body.instances[0].referenceImages.length, 1);
     assert.equal(calls[0].body.instances[0].referenceImages[0].referenceType, "asset");
+    assert.ok(calls[0].body.instances[0].referenceImages[0].image?.bytesBase64Encoded);
     assert.equal(calls[0].body.parameters.aspectRatio, "9:16");
     assert.equal(calls[0].body.parameters.resolution, "1080p");
     assert.equal(calls[0].body.parameters.durationSeconds, "8");
