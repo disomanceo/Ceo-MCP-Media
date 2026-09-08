@@ -44,7 +44,8 @@ export class GeminiProvider implements MediaProvider {
     const requiresEight = Boolean(request.referenceImages?.length || request.lastFrame || request.resolution === "1080p" || request.resolution === "4k");
     const requestedDuration = Math.max(4, Math.min(8, request.durationSec ?? 8));
     const durationSeconds = requiresEight ? 8 : requestedDuration <= 4 ? 4 : requestedDuration <= 6 ? 6 : 8;
-    const parameters: Json = { numberOfVideos: 1, aspectRatio: request.aspectRatio === "1:1" ? "16:9" : request.aspectRatio, resolution: request.resolution, durationSeconds: String(durationSeconds) };
+    const parameters: Json = { sampleCount: 1, aspectRatio: request.aspectRatio === "1:1" ? "16:9" : request.aspectRatio, resolution: request.resolution, durationSeconds };
+    if (request.referenceImages?.length || request.firstFrame || request.lastFrame) parameters.personGeneration = "allow_adult";
     const response = await fetch(`${this.base}/models/${this.videoModel}:predictLongRunning`, { method: "POST", headers: this.headers(), body: JSON.stringify({ instances: [instance], parameters }) });
     if (!response.ok) throw new Error(`Veo HTTP ${response.status}: ${(await response.text()).slice(0, 4000)}`);
     const json = await response.json() as Json; if (!json.name) throw new Error("Veo response did not contain operation name"); return { operationId: String(json.name) };

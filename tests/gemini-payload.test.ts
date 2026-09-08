@@ -55,7 +55,9 @@ test("Veo adapter follows current REST long-running payload", async () => {
     assert.ok(calls[0].body.instances[0].referenceImages[0].image?.bytesBase64Encoded);
     assert.equal(calls[0].body.parameters.aspectRatio, "9:16");
     assert.equal(calls[0].body.parameters.resolution, "1080p");
-    assert.equal(calls[0].body.parameters.durationSeconds, "8");
+    assert.equal(calls[0].body.parameters.durationSeconds, 8);
+    assert.equal(calls[0].body.parameters.sampleCount, 1);
+    assert.equal(calls[0].body.parameters.personGeneration, "allow_adult");
     assert.equal(calls[0].body.parameters.lastFrame, undefined);
   } finally { globalThis.fetch = original; }
 });
