@@ -4,7 +4,12 @@ import path from "node:path";
 
 export const nowIso = () => new Date().toISOString();
 export const newId = (prefix: string) => `${prefix}-${randomUUID()}`;
-export function dataDir(): string { return path.resolve(process.env.CEO_MEDIA_DATA_DIR || "./data"); }
+export function dataDir(): string {
+  const explicit = String(process.env.CEO_MEDIA_DATA_DIR || "").trim();
+  if (explicit) return path.resolve(explicit);
+  if (process.platform === "win32" && process.env.LOCALAPPDATA) return path.join(process.env.LOCALAPPDATA, "Ceo", "media-data");
+  return path.resolve("./data");
+}
 export async function ensureDir(dir: string): Promise<void> { await mkdir(dir, { recursive: true }); }
 export async function readJson<T>(file: string): Promise<T | null> {
   try { return JSON.parse(await readFile(file, "utf8")) as T; }
