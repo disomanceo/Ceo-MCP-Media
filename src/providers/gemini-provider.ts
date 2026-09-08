@@ -54,8 +54,12 @@ export class GeminiProvider implements MediaProvider {
     const response = await fetch(`${this.base}/${operationId}`, { headers: this.headers() });
     if (!response.ok) throw new Error(`Veo poll HTTP ${response.status}: ${(await response.text()).slice(0, 4000)}`);
     const json = await response.json() as Json; if (!json.done) return { done: false }; if (json.error) return { done: true, error: JSON.stringify(json.error).slice(0, 4000) };
-    const uri = json.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri ?? json.response?.generatedVideos?.[0]?.video?.uri;
-    return uri ? { done: true, downloadUri: String(uri) } : { done: true, error: "Veo operation completed without a video URI" };
+    const video = json.response?.generateVideoResponse?.generatedSamples?.[0]?.video ?? json.response?.generatedVideos?.[0]?.video;
+    const uri = video?.uri ?? video?.fileUri;
+    const inline = video?.videoBytes ?? video?.bytesBase64Encoded ?? video?.data;
+    if (uri) return { done: true, downloadUri: String(uri) };
+    if (inline) return { done: true, downloadUri: `data:video/mp4;base64,${String(inline)}` };
+    return { done: true, error: `Veo operation completed without downloadable video: ${JSON.stringify(json).slice(0, 4000)}` };
   }
-  async downloadVideo(downloadUri: string, outputPath: string): Promise<{ outputPath: string }> { const response = await fetch(downloadUri, { headers: { "x-goog-api-key": this.key } }); if (!response.ok) throw new Error(`Veo download HTTP ${response.status}: ${(await response.text()).slice(0, 4000)}`); await ensureDir(path.dirname(outputPath)); await writeFile(outputPath, Buffer.from(await response.arrayBuffer())); return { outputPath }; }
+  async downloadVideo(downloadUri: string, outputPath: string): Promise<{ outputPath: string }> { await ensureDir(path.dirname(outputPath)); if (downloadUri.startsWith("data:video/")) { const comma = downloadUri.indexOf(","); if (comma < 0) throw new Error("Invalid inline video data URI"); await writeFile(outputPath, Buffer.from(downloadUri.slice(comma + 1), "base64")); return { outputPath }; } const response = await fetch(downloadUri, { headers: { "x-goog-api-key": this.key } }); if (!response.ok) throw new Error(`Veo download HTTP ${response.status}: ${(await response.text()).slice(0, 4000)}`); await writeFile(outputPath, Buffer.from(await response.arrayBuffer())); return { outputPath }; }
 }

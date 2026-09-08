@@ -61,3 +61,19 @@ test("Veo adapter follows current REST long-running payload", async () => {
     assert.equal(calls[0].body.parameters.lastFrame, undefined);
   } finally { globalThis.fetch = original; }
 });
+
+test("Veo poll handles inline video bytes", async () => {
+  process.env.GEMINI_API_KEY = "test-key";
+  const original = globalThis.fetch;
+  (globalThis as any).fetch = async () => new Response(JSON.stringify({ done: true, response: { generatedVideos: [{ video: { videoBytes: Buffer.from("video-bytes").toString("base64"), mimeType: "video/mp4" } }] } }), { status: 200, headers: { "content-type": "application/json" } });
+  try {
+    const provider = new GeminiProvider();
+    const polled = await provider.pollVideo("models/veo-3.1-generate-preview/operations/test");
+    assert.equal(polled.done, true);
+    assert.match(String(polled.downloadUri), /^data:video\/mp4;base64,/);
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ceo-media-veo-bytes-"));
+    const out = path.join(dir, "out.mp4");
+    await provider.downloadVideo(String(polled.downloadUri), out);
+    assert.equal((await readFile(out)).toString(), "video-bytes");
+  } finally { globalThis.fetch = original; }
+});
