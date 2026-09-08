@@ -13,7 +13,7 @@
     "expandOnIntent": true
   },
   "delegation": {
-    "accepts": ["media", "image", "video", "storyboard", "audio", "subtitle", "render", "flow"],
+    "accepts": ["media", "image", "video", "storyboard", "audio", "subtitle", "render", "flow", "ภาพ", "วิดีโอ", "คลิป", "หนัง", "สตอรี่บอร์ด", "เสียง", "ซับ", "เรนเดอร์"],
     "durableJobs": true,
     "nonBlockingGeneration": true
   }
