@@ -15,7 +15,7 @@ test("Gemini image adapter sends reference input and response_format", async () 
   const original = globalThis.fetch;
   (globalThis as any).fetch = async (url: any, init: any) => {
     calls.push({ url: String(url), body: JSON.parse(String(init.body)) });
-    return new Response(JSON.stringify({ output_image: { mime_type: "image/png", data: Buffer.from("image-bytes").toString("base64") } }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ output_image: { mime_type: "image/jpeg", data: Buffer.from("image-bytes").toString("base64") } }), { status: 200, headers: { "content-type": "application/json" } });
   };
   try {
     const provider = new GeminiProvider();
@@ -25,6 +25,7 @@ test("Gemini image adapter sends reference input and response_format", async () 
     assert.equal(calls[0].body.input[0].type, "image");
     assert.equal(calls[0].body.input.at(-1).type, "text");
     assert.equal(calls[0].body.response_format.aspect_ratio, "9:16");
+    assert.equal(calls[0].body.response_format.mime_type, "image/jpeg");
     assert.equal((await readFile(out)).toString(), "image-bytes");
   } finally { globalThis.fetch = original; }
 });

@@ -29,7 +29,7 @@ export class GeminiProvider implements MediaProvider {
     const input: Json[] = [];
     for (const file of (request.referenceImages ?? []).slice(0, 3)) input.push(await interactionImage(file));
     input.push({ type: "text", text: request.prompt });
-    const responseFormat: Json = { type: "image", mime_type: "image/png" };
+    const responseFormat: Json = { type: "image", mime_type: "image/jpeg" };
     if (request.aspectRatio) responseFormat.aspect_ratio = request.aspectRatio;
     const response = await fetch(`${this.base}/interactions`, { method: "POST", headers: this.headers(), body: JSON.stringify({ model: this.imageModel, input, response_format: responseFormat }) });
     if (!response.ok) throw new Error(`Gemini image HTTP ${response.status}: ${(await response.text()).slice(0, 4000)}`);
