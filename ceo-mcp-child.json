@@ -1,0 +1,20 @@
+{
+  "schema": "ceo.child-mcp.v1",
+  "id": "ceo-mcp-media",
+  "name": "Ceo MCP Media",
+  "version": "1.0.0",
+  "transport": "stdio",
+  "command": "node",
+  "args": ["dist/src/mcp/server.js"],
+  "cwd": ".",
+  "exposure": {
+    "mode": "dynamic",
+    "defaultTools": ["media.capabilities", "media.project.create", "media.storyboard.plan", "media.image.generate", "media.video.generate", "media.job.status"],
+    "expandOnIntent": true
+  },
+  "delegation": {
+    "accepts": ["media", "image", "video", "storyboard", "audio", "subtitle", "render", "flow"],
+    "durableJobs": true,
+    "nonBlockingGeneration": true
+  }
+}

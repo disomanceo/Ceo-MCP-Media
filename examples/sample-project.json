@@ -1,0 +1,13 @@
+{
+  "name": "School Robot Short",
+  "brief": "A Thai student finds a friendly robot in a small school. The robot helps carry books, then both laugh when the robot rings the school bell too early.",
+  "totalDurationSec": 24,
+  "aspectRatio": "9:16",
+  "resolution": "1080p",
+  "character": {
+    "name": "Student",
+    "description": "Thai primary school student, cheerful and curious",
+    "wardrobe": "white school uniform",
+    "continuityTags": ["student-face-v1", "white-uniform"]
+  }
+}

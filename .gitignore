@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+data/jobs/*.json
+data/projects/*.json
+data/assets/*
+data/renders/*
+!data/jobs/.gitkeep
+!data/projects/.gitkeep
+!data/assets/.gitkeep
+!data/renders/.gitkeep
+*.log
