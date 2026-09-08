@@ -10,7 +10,11 @@ export class JobRunner {
   async runOnce(jobId: string): Promise<MediaJob> {
     let job = await this.store.get(jobId); if (["completed", "cancelled", "failed"].includes(job.status)) return job;
     if (Date.now() - new Date(job.createdAt).getTime() > job.timeoutMs) { job.status = "failed"; job.error = "job timeout exceeded"; job.events.push({ at: nowIso(), level: "error", message: "job.timeout" }); return this.store.save(job); }
-    job.status = "running"; job.attempts += 1; job.events.push({ at: nowIso(), level: "info", message: "job.run", data: { attempt: job.attempts } }); await this.store.save(job);
+    const isProviderPoll = job.type === "video.generate" && Boolean(job.providerState?.operationId);
+    job.status = "running";
+    if (!isProviderPoll) job.attempts += 1;
+    job.events.push({ at: nowIso(), level: "info", message: isProviderPoll ? "video.poll" : "job.run", data: { attempt: job.attempts } });
+    await this.store.save(job);
     try {
       if (job.type === "image.generate") {
         const provider = await this.router.route("image", job.provider); if (!provider.generateImage) throw new Error(`${provider.id} does not support image generation`); job.output = await provider.generateImage(job.input as any); job.provider = provider.id; job.status = "completed";

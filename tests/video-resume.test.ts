@@ -19,6 +19,7 @@ test("video job resumes after service restart", async () => {
   const restartedProcess = new MediaToolService();
   const done: any = await restartedProcess.call("media.job.run_once", { jobId: job.id });
   assert.equal(done.status, "completed");
+  assert.equal(done.attempts, 1, "provider polling must not consume retry attempts");
   const payload = JSON.parse(await readFile((done.output as any).outputPath, "utf8"));
   assert.equal(payload.type, "video");
 });
