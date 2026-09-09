@@ -1,4 +1,20 @@
 import type { ImageRequest, MusicRequest, ProviderHealth, VideoPollResult, VideoRequest, VoiceRequest } from "../types.js";
+
+export class ProviderError extends Error {
+  status?: number;
+  retryAfterMs?: number;
+  retryable: boolean;
+  code?: string;
+  constructor(message: string, options: { status?: number; retryAfterMs?: number; retryable?: boolean; code?: string } = {}) {
+    super(message);
+    this.name = "ProviderError";
+    this.status = options.status;
+    this.retryAfterMs = options.retryAfterMs;
+    this.retryable = options.retryable ?? false;
+    this.code = options.code;
+  }
+}
+
 export interface MediaProvider {
   id: "mock" | "gemini" | "flow";
   health(): Promise<ProviderHealth>;

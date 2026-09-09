@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const nowIso = () => new Date().toISOString();
@@ -17,9 +17,20 @@ export async function readJson<T>(file: string): Promise<T | null> {
 }
 export async function writeJsonAtomic(file: string, value: unknown): Promise<void> {
   await ensureDir(path.dirname(file));
-  const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  const temp = `${file}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
   await writeFile(temp, JSON.stringify(value, null, 2), "utf8");
-  await rename(temp, file);
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try { await rename(temp, file); return; }
+      catch (error: unknown) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (attempt >= 4 || !["EACCES", "EPERM", "EBUSY"].includes(String(code))) throw error;
+        await sleep(20 * Math.pow(2, attempt));
+      }
+    }
+  } finally {
+    await unlink(temp).catch(() => undefined);
+  }
 }
 export function sha256(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

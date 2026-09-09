@@ -2,19 +2,31 @@
   "schema": "ceo.child-mcp.v1",
   "id": "ceo-mcp-media",
   "name": "Ceo MCP Media",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "transport": "stdio",
   "command": "node",
   "args": ["dist/src/mcp/server.js"],
   "cwd": ".",
   "exposure": {
     "mode": "dynamic",
-    "defaultTools": ["media.capabilities", "media.project.create", "media.storyboard.plan", "media.image.generate", "media.video.generate", "media.job.status"],
+    "defaultTools": [
+      "media.capabilities",
+      "media.movie.create",
+      "media.movie.status",
+      "media.preflight.check",
+      "media.project.create",
+      "media.storyboard.plan",
+      "media.image.generate",
+      "media.video.generate",
+      "media.job.status"
+    ],
     "expandOnIntent": true
   },
   "delegation": {
-    "accepts": ["media", "image", "video", "storyboard", "audio", "subtitle", "render", "flow", "ภาพ", "วิดีโอ", "คลิป", "หนัง", "สตอรี่บอร์ด", "เสียง", "ซับ", "เรนเดอร์"],
+    "accepts": ["media", "image", "video", "storyboard", "movie", "film", "audio", "subtitle", "render", "flow", "ภาพ", "วิดีโอ", "คลิป", "หนัง", "หนังสั้น", "สตอรี่บอร์ด", "เสียง", "ซับ", "เรนเดอร์"],
     "durableJobs": true,
-    "nonBlockingGeneration": true
+    "nonBlockingGeneration": true,
+    "autoMoviePipeline": true,
+    "autoWorker": true
   }
 }

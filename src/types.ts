@@ -14,5 +14,33 @@ export interface ImageRequest { prompt: string; outputPath: string; aspectRatio?
 export interface VideoRequest { prompt: string; outputPath: string; aspectRatio: AspectRatio; resolution: Resolution; durationSec?: number; referenceImages?: string[]; firstFrame?: string; lastFrame?: string; }
 export interface VoiceRequest { text: string; outputPath: string; voice?: string; language?: string; speed?: number; style?: string; }
 export interface MusicRequest { prompt: string; outputPath: string; durationSec?: number; mood?: string; instrumental?: boolean; }
-export interface VideoPollResult { done: boolean; downloadUri?: string; error?: string; }
+export interface VideoPollResult { done: boolean; downloadUri?: string; error?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; }
 export interface ReviewResult { score: number; accepted: boolean; reasons: string[]; retryPrompt?: string; }
+
+export interface MovieCharacterInput {
+  name: string;
+  description: string;
+  wardrobe?: string;
+  voice?: string;
+  continuityTags?: string[];
+}
+
+export interface MovieCreateInput {
+  name: string;
+  brief: string;
+  totalDurationSec?: number;
+  aspectRatio?: AspectRatio;
+  resolution?: Resolution;
+  fps?: number;
+  provider?: ProviderKind;
+  character: MovieCharacterInput;
+  anchorPrompt?: string;
+  shotPrompts?: string[];
+  dialogues?: string[];
+  outputPath?: string;
+  subtitlePath?: string;
+  compose?: boolean;
+  autoRewriteGuardrails?: boolean;
+  videoConcurrency?: number;
+  idempotencyKey?: string;
+}
