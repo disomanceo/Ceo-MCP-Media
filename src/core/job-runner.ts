@@ -7,9 +7,11 @@ import { composeVideos } from "./composer.js";
 import { nowIso } from "./utils.js";
 import { ProjectService } from "./project-service.js";
 import { MovieOrchestrator } from "./movie-orchestrator.js";
+import { AssetRegistry } from "./asset-registry.js";
 
 export class JobRunner {
   private movie: MovieOrchestrator;
+  private assets = new AssetRegistry();
   private inFlight = new Map<string, Promise<MediaJob>>();
   constructor(private store = new JobStore(), private router = new ProviderRouter(), private projects = new ProjectService()) {
     this.movie = new MovieOrchestrator(this.store, this.projects);
@@ -77,6 +79,13 @@ export class JobRunner {
       } else throw new Error(`Unknown job type: ${job.type}`);
 
       job.error = undefined;
+      if (job.status === "completed") {
+        const outputPath = String((job.output as any)?.outputPath || (job.output as any)?.finalPath || "");
+        if (outputPath) {
+          const asset = await this.assets.register(outputPath, { projectId: job.projectId, jobId: job.id, source: job.type, provenance: { provider: job.provider } });
+          job.output = { ...(job.output || {}), assetId: asset.id, sha256: asset.sha256 };
+        }
+      }
       job.events.push({ at: nowIso(), level: "info", message: `job.${job.status}` });
       return await this.store.save(job);
     } catch (error: unknown) {
@@ -119,7 +128,11 @@ export class JobRunner {
   async tick(limit = 20): Promise<MediaJob[]> {
     const due = await this.store.due(limit);
     const results: MediaJob[] = [];
-    for (const job of due) results.push(await this.runOnce(job.id));
+    const concurrency = Math.max(1, Math.min(4, Number(process.env.CEO_MEDIA_WORKER_CONCURRENCY || 4)));
+    for (let offset = 0; offset < due.length; offset += concurrency) {
+      const wave = due.slice(offset, offset + concurrency);
+      results.push(...await Promise.all(wave.map((job) => this.runOnce(job.id))));
+    }
     return results;
   }
 }

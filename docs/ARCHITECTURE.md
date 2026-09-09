@@ -6,6 +6,15 @@ ChatGPT / Ceo3
       v
 Ceo MCP Media (stdio MCP)
       |
+      +-- V10 Hardening Layer
+      |      +-- Flow Native executable adapter
+      |      +-- Asset Registry (SHA-256 identity/provenance)
+      |      +-- Strong request-bound idempotency
+      |      +-- Bounded 4-worker scheduler
+      |      +-- ffmpeg-skill 0.15.3 pinned adapter
+      |      |      +-- doctor / contract / render / probe / check / look
+      |      +-- delivery/loudness/contact-sheet verification
+      |
       +-- V9 Production Workspace / Manifest
       |      +-- 00-script
       |      +-- 01-anchor

@@ -1,14 +1,40 @@
 import path from "node:path";
 import { readdir } from "node:fs/promises";
-import type { MediaJob } from "../types.js";
+import type { MediaJob, ProviderKind } from "../types.js";
 import { dataDir, newId, nowIso, readJson, sha256, writeJsonAtomic } from "./utils.js";
+
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${canonical(object[key])}`).join(",")}}`;
+}
+
+export function mediaRequestHash(value: unknown): string { return sha256(canonical(value)); }
+
+export class IdempotencyConflictError extends Error {
+  code = "IDEMPOTENCY_CONFLICT";
+  constructor(key: string) { super(`Idempotency key conflict: ${key} was already used for a different request`); this.name = "IdempotencyConflictError"; }
+}
 
 export class JobStore {
   private file(id: string) { return path.join(dataDir(), "jobs", `${id}.json`); }
-  async create<T extends Record<string, unknown>>(input: { type: string; input: T; projectId?: string; provider?: "mock" | "gemini" | "flow-web" | "ai-studio-web"; idempotencyKey?: string; maxAttempts?: number; timeoutMs?: number; }): Promise<MediaJob<T>> {
-    if (input.idempotencyKey) { const existing = await this.findByIdempotency(input.idempotencyKey); if (existing) return existing as MediaJob<T>; }
+  private fingerprint(input: { type: string; input: Record<string, unknown>; projectId?: string; provider?: ProviderKind }): string {
+    return mediaRequestHash({ type: input.type, projectId: input.projectId ?? null, provider: input.provider ?? null, input: input.input });
+  }
+
+  async create<T extends Record<string, unknown>>(input: { type: string; input: T; projectId?: string; provider?: ProviderKind; idempotencyKey?: string; maxAttempts?: number; timeoutMs?: number; requestHash?: string; }): Promise<MediaJob<T>> {
+    const requestHash = input.requestHash ?? this.fingerprint(input);
+    if (input.idempotencyKey) {
+      const existing = await this.findByIdempotency(input.idempotencyKey);
+      if (existing) {
+        const existingHash = existing.requestHash ?? this.fingerprint({ type: existing.type, projectId: existing.projectId, provider: existing.provider, input: existing.input as Record<string, unknown> });
+        if (existingHash !== requestHash) throw new IdempotencyConflictError(input.idempotencyKey);
+        return existing as MediaJob<T>;
+      }
+    }
     const now = nowIso();
-    const job: MediaJob<T> = { id: newId("job"), projectId: input.projectId, type: input.type, status: "queued", input: input.input, provider: input.provider, idempotencyKey: input.idempotencyKey, attempts: 0, maxAttempts: input.maxAttempts ?? Number(process.env.CEO_MEDIA_MAX_ATTEMPTS || 4), timeoutMs: input.timeoutMs ?? Number(process.env.CEO_MEDIA_JOB_TIMEOUT_MS || 1_800_000), createdAt: now, updatedAt: now, events: [{ at: now, level: "info", message: "job.created" }] };
+    const job: MediaJob<T> = { id: newId("job"), projectId: input.projectId, type: input.type, status: "queued", input: input.input, provider: input.provider, idempotencyKey: input.idempotencyKey, requestHash, attempts: 0, maxAttempts: input.maxAttempts ?? Number(process.env.CEO_MEDIA_MAX_ATTEMPTS || 4), timeoutMs: input.timeoutMs ?? Number(process.env.CEO_MEDIA_JOB_TIMEOUT_MS || 1_800_000), createdAt: now, updatedAt: now, events: [{ at: now, level: "info", message: "job.created" }] };
     await this.save(job); return job;
   }
   async get<T = Record<string, unknown>>(id: string): Promise<MediaJob<T>> { const j = await readJson<MediaJob<T>>(this.file(id)); if (!j) throw new Error(`Job not found: ${id}`); return j; }

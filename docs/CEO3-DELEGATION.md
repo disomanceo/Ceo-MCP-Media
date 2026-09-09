@@ -5,7 +5,7 @@ Ceo MCP Media runs as a child MCP rather than inflating the primary Ceo MCP Agen
 ## Intent routing
 Delegate for image/video generation, storyboard, character continuity, subtitles, audio, render, movie, Google Flow, Google AI Studio, browser-studio and CapCut intents. Thai media intents remain included in the child manifest.
 
-## V9 preferred route
+## V10 preferred route
 For complete movie/short-film requests, prefer:
 - `media.movie.create`
 - `media.movie.status`
@@ -29,6 +29,14 @@ AUTO creates browser external actions:
 4. After shots, the workflow creates SRT and optional durable voice/music jobs.
 5. Browser-mode movie defaults may create a CapCut external compose action containing clips, SRT, voice/music paths and the production manifest.
 6. FFmpeg/ffprobe remains available as fallback/verification.
+
+## V10 native / asset / FFmpeg rules
+- Prefer `provider:"auto"`; AUTO uses Gemini API when ready, then a configured `flow-native` adapter, then browser routes.
+- Do not construct shell command text for Flow Native or ffmpeg-skill. Use the typed child tools and their structured arguments.
+- Use `media.asset.list/get` to reuse already registered outputs instead of regenerating identical media when a matching asset is available.
+- Treat `IDEMPOTENCY_CONFLICT` as a caller error: create a new key only when the intended request really changed.
+- For autonomous FFmpeg finalization, `media.ffmpeg.status` must report the exact 0.15.3 pin as usable. Delivery/loudness/check failures are real failures and must not be hidden by legacy fallback.
+- Browser external actions remain serial even though API/local/native due jobs can run with bounded concurrency up to four.
 
 ## Browser safety
 If Flow or AI Studio asks for Google sign-in, stop automated interaction and let the user sign in manually. Do not ask for, type, store or proxy Google passwords, OTPs or recovery credentials. After the user signs in, resume the persisted external action.

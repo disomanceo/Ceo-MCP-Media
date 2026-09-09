@@ -5,7 +5,7 @@ import path from "node:path";
 import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { MediaToolService } from "../src/core/tool-service.js";
 
-test("V9 movie workflow persists a production workspace, seeded references and optional audio stage", async () => {
+test("V10 movie workflow persists a production workspace, seeded references and optional audio stage", async () => {
   process.env.CEO_MEDIA_DATA_DIR = await mkdtemp(path.join(os.tmpdir(), "ceo-media-v9-"));
   process.env.CEO_MEDIA_POLL_MS = "0";
   process.env.CEO_MEDIA_PROVIDER = "mock";
@@ -54,7 +54,7 @@ test("V9 movie workflow persists a production workspace, seeded references and o
   await access(status.output.subtitlePath);
 
   const manifestResult: any = await service.call("media.movie.manifest", { jobId: created.movieJobId });
-  assert.equal(manifestResult.manifest.pipeline, "ceo-mcp-media-v9");
+  assert.equal(manifestResult.manifest.pipeline, "ceo-mcp-media-v10");
   assert.equal(manifestResult.manifest.progress.shotsCompleted, 2);
   assert.equal(manifestResult.manifest.progress.voiceReady, true);
   assert.equal(manifestResult.manifest.progress.musicReady, true);

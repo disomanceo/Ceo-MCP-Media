@@ -1,5 +1,6 @@
 import { access } from "node:fs/promises";
 import type { MediaJob } from "../types.js";
+import { AssetRegistry } from "./asset-registry.js";
 import { JobStore } from "./job-store.js";
 import { nowIso } from "./utils.js";
 
@@ -25,15 +26,12 @@ export interface ExternalActionInput {
 }
 
 export class ExternalActionService {
+  private assets = new AssetRegistry();
   constructor(private jobs: JobStore) {}
 
   async create(projectId: string | undefined, input: ExternalActionInput, idempotencyKey: string): Promise<MediaJob<ExternalActionInput>> {
-    const existing = await this.jobs.findByIdempotency(idempotencyKey);
-    if (existing) {
-      if (existing.type !== "external.action") throw new Error(`Idempotency key already belongs to ${existing.type}`);
-      return existing as unknown as MediaJob<ExternalActionInput>;
-    }
     const job = await this.jobs.create({ type: "external.action", projectId, idempotencyKey, input });
+    if (job.status !== "queued") return job;
     job.status = "waiting";
     job.nextRunAt = undefined;
     job.providerState = { external: true, kind: input.kind, provider: input.provider };
@@ -57,11 +55,17 @@ export class ExternalActionService {
     if (job.type !== "external.action") throw new Error("job is not an external action");
     if (job.status === "completed") return job;
     await access(outputPath);
-    job.output = { outputPath, ...(metadata ? { metadata } : {}) };
+    const asset = await this.assets.register(outputPath, {
+      projectId: job.projectId,
+      jobId: job.id,
+      source: job.input.kind,
+      provenance: { provider: job.input.provider, ...(metadata ?? {}) }
+    });
+    job.output = { outputPath, assetId: asset.id, sha256: asset.sha256, ...(metadata ? { metadata } : {}) };
     job.status = "completed";
     job.error = undefined;
     job.nextRunAt = undefined;
-    job.events.push({ at: nowIso(), level: "info", message: "external.action.completed", data: { outputPath } });
+    job.events.push({ at: nowIso(), level: "info", message: "external.action.completed", data: { outputPath, assetId: asset.id } });
     return this.jobs.save(job);
   }
 

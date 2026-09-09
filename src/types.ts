@@ -1,7 +1,7 @@
 export type AspectRatio = "16:9" | "9:16" | "1:1";
 export type Resolution = "720p" | "1080p" | "4k";
 export type JobStatus = "queued" | "running" | "waiting" | "completed" | "failed" | "cancelled";
-export type ProviderKind = "mock" | "gemini" | "flow-web" | "ai-studio-web";
+export type ProviderKind = "mock" | "gemini" | "flow-native" | "flow-web" | "ai-studio-web";
 export type ProviderPreference = "auto" | ProviderKind | "flow";
 export type FinalEditor = "auto" | "ffmpeg" | "capcut";
 
@@ -10,7 +10,7 @@ export interface Shot { id: string; index: number; durationSec: number; title: s
 export interface Storyboard { id: string; projectId: string; title: string; totalDurationSec: number; aspectRatio: AspectRatio; shots: Shot[]; createdAt: string; }
 export interface MediaProject { id: string; name: string; brief: string; aspectRatio: AspectRatio; resolution: Resolution; fps: number; characters: CharacterBible[]; storyboard?: Storyboard; createdAt: string; updatedAt: string; }
 export interface JobEvent { at: string; level: "info" | "warn" | "error"; message: string; data?: Record<string, unknown>; }
-export interface MediaJob<T = Record<string, unknown>> { id: string; projectId?: string; type: string; status: JobStatus; input: T; output?: Record<string, unknown>; provider?: ProviderKind; providerState?: Record<string, unknown>; idempotencyKey?: string; attempts: number; maxAttempts: number; timeoutMs: number; createdAt: string; updatedAt: string; nextRunAt?: string; error?: string; events: JobEvent[]; cancelledAt?: string; }
+export interface MediaJob<T = Record<string, unknown>> { id: string; projectId?: string; type: string; status: JobStatus; input: T; output?: Record<string, unknown>; provider?: ProviderKind; providerState?: Record<string, unknown>; idempotencyKey?: string; requestHash?: string; attempts: number; maxAttempts: number; timeoutMs: number; createdAt: string; updatedAt: string; nextRunAt?: string; error?: string; events: JobEvent[]; cancelledAt?: string; }
 export interface ProviderHealth { id: ProviderKind; ready: boolean; capabilities: string[]; reason?: string; model?: string; }
 export interface ImageRequest { prompt: string; outputPath: string; aspectRatio?: AspectRatio; referenceImages?: string[]; }
 export interface VideoRequest { prompt: string; outputPath: string; aspectRatio: AspectRatio; resolution: Resolution; durationSec?: number; referenceImages?: string[]; firstFrame?: string; lastFrame?: string; }
@@ -59,4 +59,5 @@ export interface MovieCreateInput {
   musicPrompt?: string;
   musicMood?: string;
   idempotencyKey?: string;
+  requestHash?: string;
 }

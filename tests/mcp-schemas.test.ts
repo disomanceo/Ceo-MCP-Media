@@ -13,6 +13,7 @@ test("movie.create exposes a typed MCP schema", () => {
   assert.deepEqual(schema.properties.resolution.enum, ["720p", "1080p", "4k"]);
   assert.equal(schema.properties.character.type, "object");
   assert.ok(schema.properties.provider.enum.includes("auto"));
+  assert.ok(schema.properties.provider.enum.includes("flow-native"));
   assert.ok(schema.properties.provider.enum.includes("flow-web"));
   assert.ok(schema.properties.provider.enum.includes("ai-studio-web"));
   assert.deepEqual(schema.properties.finalEditor.enum, ["auto", "ffmpeg", "capcut"]);
@@ -23,4 +24,15 @@ test("video.generate schema describes durable generation inputs", () => {
   assert.ok(schema.required.includes("prompt"));
   assert.equal(schema.properties.referenceImages.type, "array");
   assert.equal(schema.properties.durationSec.type, "number");
+});
+
+test("V10 ffmpeg and asset schemas are typed", () => {
+  const check: any = schemaFor("media.ffmpeg.check");
+  assert.ok(check.required.includes("input"));
+  assert.ok(check.properties.platform.enum.includes("reels"));
+  const asset: any = schemaFor("media.asset.register");
+  assert.ok(asset.required.includes("path"));
+  const compose: any = schemaFor("media.compose");
+  assert.equal(compose.properties.transitionSec.type, "number");
+  assert.equal(compose.properties.loudnessLufs.type, "number");
 });

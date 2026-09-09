@@ -2,7 +2,7 @@
 
 Standalone durable media-production MCP for ChatGPT/Ceo3. It is deliberately separate from `Ceo-MCP-Agent`.
 
-## V1-V9
+## V1-V10
 - **V1** MCP foundation, projects, storyboards, provider contracts, durable jobs, FFmpeg composition.
 - **V2** Character Bible/Lock, reference images, multi-shot continuity, single-shot regeneration.
 - **V3** durable voice/music jobs, subtitles, audio composition, 16:9/9:16/1:1 presets, resolution/FPS metadata.
@@ -12,6 +12,7 @@ Standalone durable media-production MCP for ChatGPT/Ceo3. It is deliberately sep
 - **V7** Durable Director / Auto Movie Pipeline with one-call project → anchor → shots → subtitles → compose orchestration, auto-worker, quota/backoff, guardrail preflight and stale-job recovery.
 - **V8** Studio Router: `provider=auto` uses Gemini API when available; without `GEMINI_API_KEY`, anchor-image work routes to Google AI Studio Web and video shots route to Google Flow Web as durable external actions. CapCut is supported as a durable final-editor handoff.
 - **V9** Production Workspace: script/scene files, seeded user reference images, persistent `manifest.json`, compact progress/status, optional durable voice/music stage, and deterministic CapCut/FFmpeg export folders.
+- **V10** Production hardening: optional Flow Native executable provider, content-addressed Asset Registry, strong idempotency conflict detection, bounded 4-worker execution, pinned `ffmpeg-skill` 0.15.3 adapter, loudness/delivery checks and contact-sheet verification with legacy FFmpeg fallback when the skill is unavailable.
 
 ## One-call production workflow
 
@@ -55,6 +56,16 @@ Each movie gets its own stable workspace under the media data directory:
 ```
 
 `manifest.json` records the phase, shot count, output paths, audio readiness and final export state. `media.movie.status` exposes compact progress and the next browser/CapCut external action.
+
+## V10 orchestration hardening
+
+- `provider=flow-native` executes a configured local/native Flow adapter through structured stdin/stdout JSON; AUTO prefers Gemini API, then Flow Native, then browser routes.
+- Asset Registry assigns stable `asset-<sha256>` identities and records path, project/job provenance and content hash for generated/downloaded assets.
+- Idempotency keys are request-bound: identical requests reuse the existing job; a changed request with the same key fails with `IDEMPOTENCY_CONFLICT`.
+- Durable worker execution is bounded to four concurrent due jobs; browser external actions remain serial/manual and are never auto-resubmitted.
+- `npm run install:ffmpeg-skill` installs upstream `ffmpeg-skill` **0.15.3** from pinned commit `7dfbdc5b30a622dbb3c7029e690280b7ac43615e`. It does not follow upstream `main`.
+- When that exact skill pin is usable, FFmpeg composition uses declarative render + probe + delivery/loudness check + contact-sheet look verification. When the skill is unavailable, the V9 legacy FFmpeg composer remains the fallback.
+- MCP tools expose asset registry and ffmpeg-skill status/doctor/contract/render/probe/check/look operations without accepting raw shell command strings.
 
 ## Reference images / character continuity
 
@@ -105,6 +116,7 @@ If `CEO_MEDIA_DATA_DIR` is blank/unset, Windows defaults to `%LOCALAPPDATA%\Ceo\
 
 ```powershell
 npm install
+npm run install:ffmpeg-skill
 Copy-Item .env.example .env
 npm run typecheck
 npm test

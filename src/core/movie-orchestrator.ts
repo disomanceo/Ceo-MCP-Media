@@ -178,7 +178,7 @@ export class MovieOrchestrator {
         state.phase = "audio";
         job.events.push({ at: nowIso(), level: "info", message: "movie.shots.completed", data: { shots: shots.length, subtitlePath: state.subtitlePath } });
       } else {
-        const concurrency = isBrowserProvider(videoProvider) ? 1 : Math.max(1, Math.min(3, Number(input.videoConcurrency || process.env.CEO_MEDIA_MOVIE_VIDEO_CONCURRENCY || 1)));
+        const concurrency = isBrowserProvider(videoProvider) ? 1 : Math.max(1, Math.min(4, Number(input.videoConcurrency || process.env.CEO_MEDIA_MOVIE_VIDEO_CONCURRENCY || 4)));
         for (let i = 0; i < shots.length && active < concurrency; i++) {
           if (state.shotJobIds![i]) continue;
           const checked = preflightPrompt(input.shotPrompts?.[i] || shots[i].prompt, autoRewrite);
@@ -256,7 +256,7 @@ export class MovieOrchestrator {
         return this.waiting(job, project, state);
       }
 
-      const compose = await this.jobs.create({ type: "compose", projectId, idempotencyKey: `${job.id}:compose:v2`, input: { clips: project.storyboard.shots.map((s) => String(s.assetPath)), subtitleFile: state.subtitlePath, audioFile: state.voicePath, musicFile: state.musicPath, outputPath: finalPath } });
+      const compose = await this.jobs.create({ type: "compose", projectId, idempotencyKey: `${job.id}:compose:v3`, input: { clips: project.storyboard.shots.map((s) => String(s.assetPath)), subtitleFile: state.subtitlePath, audioFile: state.voicePath, musicFile: state.musicPath, outputPath: finalPath, transitionSec: Number(process.env.CEO_MEDIA_TRANSITION_SEC || 0.25), deliveryPlatform: project.aspectRatio === "9:16" ? "reels" : "youtube", loudnessLufs: -14, truePeakDb: -1 } });
       state.composeJobId = compose.id; state.phase = "compose";
       job.events.push({ at: nowIso(), level: "info", message: "movie.compose.created", data: { jobId: compose.id, editor: "ffmpeg" } });
       return this.waiting(job, project, state);

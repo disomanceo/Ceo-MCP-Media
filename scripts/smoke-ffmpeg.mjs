@@ -36,5 +36,8 @@ const probeText = run(ffprobe, ["-v", "error", "-show_entries", "format=duration
 const probe = JSON.parse(probeText);
 const video = probe.streams?.find((stream) => stream.width && stream.height);
 const duration = Number(probe.format?.duration || 0);
-if (!video || video.codec_name !== "h264" || video.width !== 320 || video.height !== 180 || duration < 1.8) throw new Error(`unexpected ffprobe result: ${probeText}`);
-console.log(JSON.stringify({ ok: true, ffmpeg, ffprobe, output, duration, codec: video.codec_name, width: video.width, height: video.height, size: Number(probe.format?.size || 0) }, null, 2));
+const expectedDuration = 1.75; // 1s + 1s - 0.25s xfade overlap
+if (!video || video.codec_name !== "h264" || video.width !== 320 || video.height !== 180 || Math.abs(duration - expectedDuration) > 0.12) throw new Error(`unexpected ffprobe result: ${probeText}`);
+if (done.output?.engine !== "ffmpeg-skill") throw new Error(`expected ffmpeg-skill engine, got ${done.output?.engine || "unknown"}`);
+if (!done.output?.assetId) throw new Error("V10 asset registry did not attach assetId to compose output");
+console.log(JSON.stringify({ ok: true, engine: done.output.engine, assetId: done.output.assetId, ffmpeg, ffprobe, output, duration, codec: video.codec_name, width: video.width, height: video.height, size: Number(probe.format?.size || 0), contactSheet: done.output.contactSheet }, null, 2));

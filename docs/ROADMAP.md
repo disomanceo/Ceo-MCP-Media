@@ -1,4 +1,4 @@
-# Roadmap V1-V9
+# Roadmap V1-V10
 
 ## V1 - Foundation
 Standalone TypeScript MCP server, project manifests, storyboard planner, provider contracts, local asset/job stores, FFmpeg composer, durable job lifecycle and CLI.
@@ -51,6 +51,18 @@ Implemented:
 - FFmpeg composition supports optional voice plus looped/ducked background music.
 - Movie outputs include `workspaceRoot` and `manifestPath` so follow-up commands can be short and deterministic.
 - V9 production-workspace integration test covers script files, seeded references, shot generation, SRT, voice/music and manifest progress.
+
+## V10 - Native/Asset/FFmpeg Skill Hardening
+Implemented:
+- Optional `flow-native` executable adapter with structured JSON I/O and AUTO routing ahead of browser fallback.
+- Content-addressed Asset Registry with SHA-256 identity/provenance for generated and externally completed media.
+- Strong request-bound idempotency with explicit `IDEMPOTENCY_CONFLICT` on key reuse with changed payloads.
+- Bounded durable worker and movie-shot concurrency up to four for API/local/native providers; browser routes remain serial.
+- Pinned upstream `ffmpeg-skill` 0.15.3 integration at commit `7dfbdc5b30a622dbb3c7029e690280b7ac43615e`; installer is fail-closed and never tracks latest `main`.
+- FFmpeg Skill adapter exposes doctor, contract, render, probe, check and look operations with structured argv only.
+- FFmpeg composition uses skill render/probe/loudness/delivery/contact-sheet verification when the exact pin is usable, with legacy FFmpeg fallback only when the skill is unavailable.
+- MCP schemas/tools expose Asset Registry and FFmpeg Skill surfaces; manifests/capabilities report V10.
+- V10 regression tests cover idempotency conflict, content identity, bounded 4-worker execution and skill pin metadata.
 
 ## Production hardening next
 ### P1

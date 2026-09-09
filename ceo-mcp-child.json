@@ -2,7 +2,7 @@
   "schema": "ceo.child-mcp.v1",
   "id": "ceo-mcp-media",
   "name": "Ceo MCP Media",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "transport": "stdio",
   "command": "node",
   "args": ["dist/src/mcp/server.js"],
@@ -19,6 +19,8 @@
       "media.external.next",
       "media.external.complete",
       "media.preflight.check",
+      "media.ffmpeg.status",
+      "media.asset.list",
       "media.project.create",
       "media.storyboard.plan",
       "media.image.generate",
@@ -38,6 +40,11 @@
     "capcutBridge": true,
     "productionWorkspace": true,
     "persistentManifest": true,
-    "audioStage": true
+    "audioStage": true,
+    "flowNative": true,
+    "assetRegistry": true,
+    "ffmpegSkill": "0.15.3",
+    "strongIdempotency": true,
+    "maxWorkerConcurrency": 4
   }
 }

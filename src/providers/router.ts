@@ -1,12 +1,13 @@
 import { ProviderError, type MediaProvider } from "./provider.js";
 import { MockProvider } from "./mock-provider.js";
 import { GeminiProvider } from "./gemini-provider.js";
+import { FlowNativeProvider } from "./flow-native-provider.js";
 import { getProviderCooldown } from "./quota-manager.js";
 export type MediaCapability = "image" | "video" | "voice" | "music";
 
 export class ProviderRouter {
   private providers = new Map<string, MediaProvider>();
-  constructor() { this.register(new MockProvider()); this.register(new GeminiProvider()); }
+  constructor() { this.register(new MockProvider()); this.register(new GeminiProvider()); this.register(new FlowNativeProvider()); }
   register(provider: MediaProvider) { this.providers.set(provider.id, provider); }
   get(id?: string): MediaProvider {
     const requested = id || process.env.CEO_MEDIA_PROVIDER || "mock";

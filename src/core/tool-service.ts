@@ -1,5 +1,5 @@
 import path from "node:path";
-import { JobStore } from "./job-store.js";
+import { IdempotencyConflictError, JobStore, mediaRequestHash } from "./job-store.js";
 import { JobRunner } from "./job-runner.js";
 import { ProjectService } from "./project-service.js";
 import { planStoryboard } from "./storyboard.js";
@@ -12,10 +12,14 @@ import { storyboardToSrt } from "./subtitles.js";
 import { dataDir, safeName, writeJsonAtomic } from "./utils.js";
 import { preflightPrompt } from "./preflight.js";
 import { movieWorkspace, prepareMovieWorkspace, readMovieManifest } from "./pipeline-workspace.js";
+import { AssetRegistry } from "./asset-registry.js";
+import { ffmpegSkillStatus, runFfmpegSkill } from "./ffmpeg-skill-adapter.js";
 
 export const TOOL_NAMES = [
   "media.movie.create","media.movie.status","media.movie.manifest","media.preflight.check","media.studio.status","media.studio.route",
   "media.external.next","media.external.list","media.external.complete","media.external.fail",
+  "media.asset.list","media.asset.get","media.asset.register",
+  "media.ffmpeg.status","media.ffmpeg.doctor","media.ffmpeg.contract","media.ffmpeg.render","media.ffmpeg.probe","media.ffmpeg.check","media.ffmpeg.look",
   "media.project.create","media.project.list","media.project.get","media.character.lock","media.storyboard.plan",
   "media.image.generate","media.video.generate","media.video.regenerate","media.audio.voice","media.audio.music","media.compose","media.subtitle.generate","media.director.review",
   "media.job.status","media.job.list","media.job.run_once","media.job.tick","media.job.cancel","media.provider.status","media.flow.handoff","media.capabilities"
@@ -27,6 +31,7 @@ export class MediaToolService {
   router = new ProviderRouter();
   studio = new StudioRouter();
   external = new ExternalActionService(this.jobs);
+  assets = new AssetRegistry();
   runner = new JobRunner(this.jobs, this.router, this.projects);
   flow = new FlowBridge();
 
@@ -61,6 +66,16 @@ export class MediaToolService {
   async call(name: string, args: any = {}) {
     switch (name) {
       case "media.preflight.check": return preflightPrompt(args.prompt, args.autoRewrite !== false);
+      case "media.asset.list": return this.assets.list(args.projectId);
+      case "media.asset.get": return this.assets.get(args.assetId);
+      case "media.asset.register": return this.assets.register(args.path, { projectId: args.projectId, jobId: args.jobId, source: args.source, provenance: args.provenance });
+      case "media.ffmpeg.status": return ffmpegSkillStatus();
+      case "media.ffmpeg.doctor": return runFfmpegSkill("doctor");
+      case "media.ffmpeg.contract": return runFfmpegSkill("contract", { static: args.static === true });
+      case "media.ffmpeg.render": return runFfmpegSkill("render", args);
+      case "media.ffmpeg.probe": return runFfmpegSkill("probe", args);
+      case "media.ffmpeg.check": return runFfmpegSkill("check", args);
+      case "media.ffmpeg.look": return runFfmpegSkill("look", args);
       case "media.studio.status": return this.studio.status();
       case "media.studio.route": return this.studio.resolve(args.capability, args.provider ?? "auto");
       case "media.external.list": return this.external.pending(args.projectId);
@@ -69,11 +84,14 @@ export class MediaToolService {
       case "media.external.fail": return this.external.fail(args.jobId, args.error, args.retryable === true);
 
       case "media.movie.create": {
+        const { idempotencyKey: _ignoredIdempotencyKey, ...semanticArgs } = args;
+        const requestHash = mediaRequestHash({ tool: "media.movie.create", args: semanticArgs });
         if (args.idempotencyKey) {
           const existing = await this.jobs.findByIdempotency(args.idempotencyKey);
           if (existing) {
+            if (existing.requestHash && existing.requestHash !== requestHash) throw new IdempotencyConflictError(args.idempotencyKey);
             const existingProject = existing.projectId ? await this.projects.get(existing.projectId) : undefined;
-            return { movieJobId: existing.id, projectId: existing.projectId, status: existing.status, reused: true, workspaceRoot: existingProject ? movieWorkspace(existingProject).root : undefined };
+            return { movieJobId: existing.id, projectId: existing.projectId, status: existing.status, reused: true, workspaceRoot: existingProject ? movieWorkspace(existingProject).root : undefined, manifestPath: existingProject ? movieWorkspace(existingProject).manifestPath : undefined };
           }
         }
         const preference = args.provider ?? "auto";
@@ -104,13 +122,13 @@ export class MediaToolService {
         const job = await this.jobs.create({
           type: "movie.create", projectId: project.id,
           provider: imageRoute.provider === videoRoute.provider ? imageRoute.provider : undefined,
-          idempotencyKey: args.idempotencyKey, timeoutMs: args.timeoutMs,
+          idempotencyKey: args.idempotencyKey, requestHash, timeoutMs: args.timeoutMs,
           input: {
             name: args.name, brief: checked.safePrompt, script: sourceScript, totalDurationSec: args.totalDurationSec ?? 8, aspectRatio: project.aspectRatio, resolution: project.resolution, fps: project.fps,
             provider: preference, resolvedImageProvider: imageRoute.provider, resolvedVideoProvider: videoRoute.provider,
             character: { ...args.character, referenceImages: (args.character.referenceImages ?? []).slice(0, 3) }, anchorPrompt: args.anchorPrompt, shotPrompts: args.shotPrompts, dialogues: args.dialogues,
             outputPath: args.outputPath, subtitlePath: args.subtitlePath, compose: args.compose !== false, finalEditor,
-            autoRewriteGuardrails: args.autoRewriteGuardrails !== false, videoConcurrency: args.videoConcurrency ?? 1,
+            autoRewriteGuardrails: args.autoRewriteGuardrails !== false, videoConcurrency: args.videoConcurrency ?? 4,
             generateVoice: args.generateVoice === true, voiceProvider: args.voiceProvider, voiceLanguage: args.voiceLanguage, voiceSpeed: args.voiceSpeed, voiceStyle: args.voiceStyle,
             generateMusic: args.generateMusic === true, musicProvider: args.musicProvider, musicPrompt: args.musicPrompt, musicMood: args.musicMood,
             idempotencyKey: args.idempotencyKey
@@ -150,7 +168,7 @@ export class MediaToolService {
       }
       case "media.image.generate": {
         const p = args.projectId ? await this.projects.get(args.projectId) : undefined;
-        const outputPath = args.outputPath ?? path.join(dataDir(), "assets", `${safeName(args.name ?? "image")}-${Date.now()}.jpg`);
+        const outputPath = args.outputPath ?? path.join(dataDir(), "assets", args.idempotencyKey ? `${safeName(args.name ?? "image")}-${mediaRequestHash({ key: args.idempotencyKey }).slice(0, 12)}.jpg` : `${safeName(args.name ?? "image")}-${Date.now()}.jpg`);
         const checked = preflightPrompt(args.prompt, args.autoRewriteGuardrails === true);
         const route = await this.studio.resolve("image", args.provider ?? "auto");
         if (!route.ready) throw new Error(route.reason);
@@ -159,7 +177,7 @@ export class MediaToolService {
       }
       case "media.video.generate": {
         const p = args.projectId ? await this.projects.get(args.projectId) : undefined;
-        const outputPath = args.outputPath ?? path.join(dataDir(), "assets", `${safeName(args.name ?? "video")}-${Date.now()}.mp4`);
+        const outputPath = args.outputPath ?? path.join(dataDir(), "assets", args.idempotencyKey ? `${safeName(args.name ?? "video")}-${mediaRequestHash({ key: args.idempotencyKey }).slice(0, 12)}.mp4` : `${safeName(args.name ?? "video")}-${Date.now()}.mp4`);
         const checked = preflightPrompt(args.prompt, args.autoRewriteGuardrails === true);
         const route = await this.studio.resolve("video", args.provider ?? "auto");
         if (!route.ready) throw new Error(route.reason);
@@ -171,14 +189,14 @@ export class MediaToolService {
         const input = old.input as any; return this.jobs.create({ type: old.type, projectId: old.projectId, provider: args.provider ?? old.provider, idempotencyKey: args.idempotencyKey, input: { ...input, prompt: args.prompt ?? input.prompt, outputPath: args.outputPath ?? String(input.outputPath).replace(/\.mp4$/i, `-retry-${Date.now()}.mp4`) } });
       }
       case "media.audio.voice": {
-        const outputPath = args.outputPath ?? path.join(dataDir(), "assets", `${safeName(args.name ?? "voice")}-${Date.now()}.wav`);
+        const outputPath = args.outputPath ?? path.join(dataDir(), "assets", args.idempotencyKey ? `${safeName(args.name ?? "voice")}-${mediaRequestHash({ key: args.idempotencyKey }).slice(0, 12)}.wav` : `${safeName(args.name ?? "voice")}-${Date.now()}.wav`);
         return this.jobs.create({ type: "audio.voice", projectId: args.projectId, provider: args.provider, idempotencyKey: args.idempotencyKey, input: { text: args.text, outputPath, voice: args.voice, language: args.language ?? "th-TH", speed: args.speed, style: args.style } });
       }
       case "media.audio.music": {
-        const outputPath = args.outputPath ?? path.join(dataDir(), "assets", `${safeName(args.name ?? "music")}-${Date.now()}.wav`);
+        const outputPath = args.outputPath ?? path.join(dataDir(), "assets", args.idempotencyKey ? `${safeName(args.name ?? "music")}-${mediaRequestHash({ key: args.idempotencyKey }).slice(0, 12)}.wav` : `${safeName(args.name ?? "music")}-${Date.now()}.wav`);
         return this.jobs.create({ type: "audio.music", projectId: args.projectId, provider: args.provider, idempotencyKey: args.idempotencyKey, input: { prompt: args.prompt, outputPath, durationSec: args.durationSec, mood: args.mood, instrumental: args.instrumental ?? true } });
       }
-      case "media.compose": return this.jobs.create({ type: "compose", projectId: args.projectId, idempotencyKey: args.idempotencyKey, input: { clips: args.clips, outputPath: args.outputPath, subtitleFile: args.subtitleFile, audioFile: args.audioFile, musicFile: args.musicFile } });
+      case "media.compose": return this.jobs.create({ type: "compose", projectId: args.projectId, idempotencyKey: args.idempotencyKey, input: { clips: args.clips, outputPath: args.outputPath, subtitleFile: args.subtitleFile, audioFile: args.audioFile, musicFile: args.musicFile, transitionSec: args.transitionSec, deliveryPlatform: args.deliveryPlatform, loudnessLufs: args.loudnessLufs, truePeakDb: args.truePeakDb } });
       case "media.job.status": return this.jobs.get(args.jobId);
       case "media.job.list": return this.jobs.list();
       case "media.job.run_once": return this.runner.runOnce(args.jobId);
@@ -199,9 +217,10 @@ export class MediaToolService {
         await writeJsonAtomic(outputPath, handoff); return { outputPath, handoff };
       }
       case "media.capabilities": return {
-        versions: ["v1","v2","v3","v4","v5","v6","v7","v8","v9"], durable: true, autoMoviePipeline: true, autoWorker: process.env.CEO_MEDIA_AUTO_WORKER !== "false",
-        studioRouter: true, browserProviders: ["flow-web","ai-studio-web"], browserExternalActions: true, capcutBridge: true,
-        productionWorkspace: true, persistentManifest: true, seededReferenceImages: true, audioStage: true,
+        versions: ["v1","v2","v3","v4","v5","v6","v7","v8","v9","v10"], durable: true, autoMoviePipeline: true, autoWorker: process.env.CEO_MEDIA_AUTO_WORKER !== "false",
+        studioRouter: true, nativeProviders: ["flow-native"], browserProviders: ["flow-web","ai-studio-web"], browserExternalActions: true, capcutBridge: true,
+        productionWorkspace: true, persistentManifest: true, seededReferenceImages: true, audioStage: true, assetRegistry: true,
+        ffmpegSkill: ffmpegSkillStatus(), maxWorkerConcurrency: 4, strongIdempotency: true,
         providerAgnostic: true, flowOptional: true, guardrailPreflight: true, staleRunningRecovery: true, maxReferenceImages: 3, maxShotSec: 8, audioJobs: ["voice","music"], tools: TOOL_NAMES
       };
       default: throw new Error(`Unknown tool: ${name}`);

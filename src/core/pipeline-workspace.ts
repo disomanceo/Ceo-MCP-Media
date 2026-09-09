@@ -92,8 +92,8 @@ export async function prepareMovieWorkspace(project: MediaProject, movieJobId: s
   ].join("\n"), "utf8");
   await writeJsonAtomic(ws.exportPlanPath, { aspectRatio: project.aspectRatio, resolution: project.resolution, fps: project.fps, outputPath: input.outputPath || ws.finalPath });
   await writeJsonAtomic(ws.manifestPath, {
-    version: 1,
-    pipeline: "ceo-mcp-media-v9",
+    version: 2,
+    pipeline: "ceo-mcp-media-v10",
     movieJobId,
     projectId: project.id,
     name: project.name,
@@ -126,8 +126,8 @@ export async function updateMovieManifest(project: MediaProject, job: MediaJob<M
   const completedShots = shots.filter((s) => Boolean(s.assetPath) && ["generated", "approved"].includes(String(s.status))).length;
   await writeJsonAtomic(ws.manifestPath, {
     ...previous,
-    version: 1,
-    pipeline: "ceo-mcp-media-v9",
+    version: 2,
+    pipeline: "ceo-mcp-media-v10",
     movieJobId: job.id,
     projectId: project.id,
     name: project.name,
