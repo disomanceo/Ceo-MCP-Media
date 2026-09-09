@@ -1,8 +1,8 @@
 {
   "name": "ceo-mcp-media",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
-  "description": "Durable provider-agnostic MCP media pipeline for image, video, audio and composition.",
+  "description": "Durable provider-agnostic MCP media pipeline with API, browser studio and CapCut/FFmpeg routing.",
   "type": "module",
   "engines": { "node": ">=20" },
   "bin": {
@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test dist/tests/job-store.test.js dist/tests/storyboard.test.js dist/tests/router.test.js dist/tests/audio-jobs.test.js dist/tests/video-resume.test.js dist/tests/gemini-payload.test.js dist/tests/preflight.test.js dist/tests/movie-workflow.test.js dist/tests/provider-errors.test.js dist/tests/mcp-schemas.test.js dist/tests/auto-worker.integration.test.js",
+    "test": "npm run build && node --test dist/tests/job-store.test.js dist/tests/storyboard.test.js dist/tests/router.test.js dist/tests/audio-jobs.test.js dist/tests/video-resume.test.js dist/tests/gemini-payload.test.js dist/tests/preflight.test.js dist/tests/movie-workflow.test.js dist/tests/provider-errors.test.js dist/tests/mcp-schemas.test.js dist/tests/auto-worker.integration.test.js dist/tests/studio-router.test.js dist/tests/browser-workflow.test.js",
     "start": "node dist/src/mcp/server.js",
     "dev": "tsx src/mcp/server.ts",
     "cli": "tsx src/cli/index.ts",

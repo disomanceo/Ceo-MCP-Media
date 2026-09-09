@@ -11,7 +11,7 @@ test("video job resumes after service restart", async () => {
   process.env.CEO_MEDIA_POLL_MS = "0";
 
   const firstProcess = new MediaToolService();
-  const job: any = await firstProcess.call("media.video.generate", { prompt: "cinematic school shot", durationSec: 8, idempotencyKey: "resume-video-1" });
+  const job: any = await firstProcess.call("media.video.generate", { prompt: "cinematic school shot", provider: "mock", durationSec: 8, idempotencyKey: "resume-video-1" });
   const waiting: any = await firstProcess.call("media.job.run_once", { jobId: job.id });
   assert.equal(waiting.status, "waiting");
   assert.ok(waiting.providerState?.operationId);

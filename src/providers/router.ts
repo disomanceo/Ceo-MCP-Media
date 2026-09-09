@@ -11,7 +11,7 @@ export class ProviderRouter {
   get(id?: string): MediaProvider {
     const requested = id || process.env.CEO_MEDIA_PROVIDER || "mock";
     const provider = this.providers.get(requested);
-    if (!provider) throw new Error(`Unknown provider: ${requested}`);
+    if (!provider) throw new Error(`Provider ${requested} is not an executable API/local provider`);
     return provider;
   }
   async route(capability: MediaCapability, requested?: string): Promise<MediaProvider> {
@@ -31,7 +31,7 @@ export class ProviderRouter {
     const fallback = this.get(process.env.CEO_MEDIA_PROVIDER_FALLBACK || "mock");
     const fh = await fallback.health();
     if (fh.ready && fh.capabilities.includes(capability)) return fallback;
-    throw new Error(`No ready provider for capability ${capability}`);
+    throw new Error(`No ready executable provider for capability ${capability}`);
   }
   async status() { const rows = []; for (const provider of this.providers.values()) rows.push(await provider.health()); return rows; }
 }

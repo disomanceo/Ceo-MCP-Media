@@ -16,7 +16,7 @@ export class ProviderError extends Error {
 }
 
 export interface MediaProvider {
-  id: "mock" | "gemini" | "flow";
+  id: "mock" | "gemini";
   health(): Promise<ProviderHealth>;
   generateImage?(request: ImageRequest): Promise<{ outputPath: string }>;
   generateVoice?(request: VoiceRequest): Promise<{ outputPath: string }>;

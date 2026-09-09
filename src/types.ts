@@ -1,7 +1,9 @@
 export type AspectRatio = "16:9" | "9:16" | "1:1";
 export type Resolution = "720p" | "1080p" | "4k";
 export type JobStatus = "queued" | "running" | "waiting" | "completed" | "failed" | "cancelled";
-export type ProviderKind = "mock" | "gemini" | "flow";
+export type ProviderKind = "mock" | "gemini" | "flow-web" | "ai-studio-web";
+export type ProviderPreference = "auto" | ProviderKind | "flow";
+export type FinalEditor = "auto" | "ffmpeg" | "capcut";
 
 export interface CharacterBible { id: string; name: string; description: string; wardrobe?: string; voice?: string; referenceImages: string[]; continuityTags: string[]; }
 export interface Shot { id: string; index: number; durationSec: number; title: string; prompt: string; dialogue?: string; camera?: string; characters: string[]; referenceImages: string[]; continuityTags: string[]; status?: "planned" | "queued" | "generated" | "rejected" | "approved"; assetPath?: string; }
@@ -32,7 +34,9 @@ export interface MovieCreateInput {
   aspectRatio?: AspectRatio;
   resolution?: Resolution;
   fps?: number;
-  provider?: ProviderKind;
+  provider?: ProviderPreference;
+  resolvedImageProvider?: ProviderKind;
+  resolvedVideoProvider?: ProviderKind;
   character: MovieCharacterInput;
   anchorPrompt?: string;
   shotPrompts?: string[];
@@ -40,6 +44,7 @@ export interface MovieCreateInput {
   outputPath?: string;
   subtitlePath?: string;
   compose?: boolean;
+  finalEditor?: FinalEditor;
   autoRewriteGuardrails?: boolean;
   videoConcurrency?: number;
   idempotencyKey?: string;

@@ -1,48 +1,59 @@
-# Roadmap V1-V7
+# Roadmap V1-V8
 
 ## V1 - Foundation
 Standalone TypeScript MCP server, project manifests, storyboard planner, provider contracts, local asset/job stores, FFmpeg composer, durable job lifecycle and CLI.
 
 ## V2 - Character continuity
-Character Bible/Lock stores stable identity description, wardrobe, voice, reference-image slots, continuity tags, multi-shot storyboards and regenerate-one-shot workflow.
+Character Bible/Lock, reference images, continuity tags and single-shot regeneration.
 
 ## V3 - Audio / subtitles / formats
-Project presets carry aspect ratio, resolution and FPS. Storyboard dialogue exports SRT. Voice/TTS and music generation use durable provider jobs. Composer supports optional audio and subtitle burn-in.
+Aspect ratio/resolution/FPS presets, SRT export, durable voice/music jobs and subtitle/audio composition.
 
 ## V4 - Auto Director
-Deterministic continuity scoring/review with retry prompt generation. Job retries are bounded/durable. Render QA hooks are available around composition.
+Deterministic continuity scoring/review with bounded retry prompts.
 
 ## V5 - Provider router + Flow
-Gemini adapter supports Gemini image Interactions API and Veo long-running operations. Router provides controlled fallback behavior. Flow bridge creates a portable handoff package and remains optional.
+Gemini image/Veo adapters, provider routing and optional portable Flow handoff.
 
 ## V6 - Ceo3 delegation
-`ceo-mcp-child.json` defines child MCP startup, intent tags, minimal default exposure and dynamic expansion. Ceo3 delegates media work without loading the full media schema into every coding conversation.
+Child MCP manifest, Thai/English media intents and dynamic tool exposure.
 
 ## V7 - Durable Director / Auto Movie Pipeline
 Implemented:
 - `media.movie.create` / `media.movie.status` durable parent workflow.
-- One workflow coordinates project, character lock, storyboard, anchor image, serial/bounded video shots, SRT and final compose.
-- Built-in MCP auto-worker with bounded batch size.
-- Stale `running` job recovery through a configurable lease.
-- Provider poll errors separated from submit retry budget.
-- HTTP 429/Retry-After aware backoff plus provider-wide cooldown.
-- Guardrail/IP prompt preflight with optional originality rewrite.
-- Explicit Gemini requests no longer silently fall back to Mock.
-- Typed MCP input schemas instead of empty `properties` objects.
-- Veo downloads stream to disk instead of buffering the whole response in RAM.
-- Persistent default data path outside managed child install.
+- Project → character lock → storyboard → anchor → serial/bounded shots → SRT → compose.
+- Auto-worker, stale-running recovery, per-job in-flight guard and atomic JSON writes.
+- Separate poll error budget, 429/Retry-After backoff and provider-wide cooldown.
+- Guardrail/IP prompt preflight and strict explicit-provider routing.
+- Typed MCP schemas, streaming Veo downloads and persistent runtime data path.
+
+## V8 - Studio Router / No-API Browser Mode
+Implemented:
+- `provider=auto` selects Gemini API when available.
+- Without Gemini API credentials, anchor/image work routes to Google AI Studio Web and video work routes to Google Flow Web.
+- Browser generation is represented as durable `external.action` jobs rather than fake in-child browser automation.
+- `media.studio.status` / `media.studio.route` expose routing decisions.
+- `media.external.next` / `list` / `complete` / `fail` provide resumable Ceo3/Playwright browser handoff.
+- External browser actions are excluded from auto-worker due polling so they are never duplicated.
+- `media.movie.status` surfaces the next external action directly.
+- Browser-mode movies can use CapCut as the final editor via durable `capcut.compose` handoff.
+- CapCut handoff requires doctor/version checks and warns against old-template/new-app schema mismatch.
+- Browser sign-in is manual-only; the media system never stores or types Google credentials.
+- FFmpeg/ffprobe remains the canonical autonomous fallback and verification layer.
 
 ## Production hardening next
 ### P1
-- SQLite WAL job/project index for large histories and multi-process locking.
-- Vision-based rendered-frame QA: face, wardrobe, location, motion and shot-continuity scoring.
-- Auto-regenerate only failed/low-quality shots based on visual QA.
-- FFmpeg normalize gate: resolution/FPS/timebase/audio normalization, loudness QA, exact-duration verification and temp cleanup.
-- Asset hash cache, deduplication and retention/cleanup policy.
+- Browser recipe adapters with semantic state verification for current Flow/AI Studio UI, including login-required/quota-required/completed states.
+- Local download watcher + asset checksum matching for browser-generated files.
+- CapCut draft adapter that can select a current compatible empty-project template automatically.
+- Vision-based rendered-frame QA: face, wardrobe, location, motion and shot continuity.
+- Auto-regenerate only low-quality shots based on visual QA.
+- FFmpeg normalize/loudness/exact-duration gate.
+- SQLite WAL index for larger histories and multi-process locking.
+- Asset hash cache, deduplication and retention cleanup.
 
 ### P2
-- Real production TTS/music providers and loudness-aware mixing.
-- Object storage/signed URLs for cloud/multi-machine workers.
-- More production video/image providers only after orchestration/QA are stable.
-- Cost/latency/success-rate telemetry and adaptive provider scoring.
-- Explicit Flow browser bridge only when UI automation is needed.
+- Real TTS/music providers and loudness-aware mixing.
+- Object storage/signed URLs for multi-machine workers.
+- Additional production media providers after orchestration/QA are stable.
+- Cost/credit/latency telemetry across API and browser routes.

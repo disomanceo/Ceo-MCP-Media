@@ -6,6 +6,12 @@ ChatGPT / Ceo3
       v
 Ceo MCP Media (stdio MCP)
       |
+      +-- V8 Studio Router
+      |      +-- Gemini API (when credential exists)
+      |      +-- Google AI Studio Web external action (image/anchor)
+      |      +-- Google Flow Web external action (video)
+      |      +-- CapCut external editor action
+      |
       +-- V7 Durable Director
       |      +-- Prompt / guardrail preflight
       |      +-- Movie workflow parent job
@@ -15,43 +21,45 @@ Ceo MCP Media (stdio MCP)
       +-- ProjectService
       +-- Storyboard / Character Lock / Auto Director
       +-- Durable JobStore + JobRunner
-      |       |
-      |       +-- ProviderRouter
-      |       |      +-- Mock
-      |       |      +-- Gemini Image
-      |       |      +-- Veo long-running video
-      |       |      +-- durable Voice / Music provider contracts
-      |       |      +-- future providers
-      |       |
-      |       +-- FFmpeg Composer
+      |       +-- Mock
+      |       +-- Gemini Image
+      |       +-- Veo long-running video
+      |       +-- Voice / Music provider contracts
       |
-      +-- Optional Flow handoff
+      +-- ExternalActionService
+      |       +-- studio.image
+      |       +-- studio.video
+      |       +-- capcut.compose
+      |
+      +-- FFmpeg Composer / ffprobe verification
 ```
 
-## Non-blocking invariant
-An MCP call creates or advances work; it does not hold the transport open while a remote model renders. Provider operation IDs and movie workflow state are persisted in job records. The MCP server has a bounded auto-worker that advances due jobs while the child process is alive; manual `media.job.tick` remains available for diagnostics/recovery.
+## Browser-provider boundary
+Ceo MCP Media does not impersonate a signed-in browser. Web providers are represented as durable `external.action` jobs containing the URL, prompt, local references, expected output type and bounded semantic instructions. Ceo3/Playwright or Browser Companion performs the browser interaction, downloads the media locally, then calls `media.external.complete` with the resulting file path.
 
-## V7 movie workflow
-`media.movie.create` creates a parent durable workflow. The parent coordinates child jobs rather than performing remote generation synchronously. Default video concurrency is 1, so one Veo shot completes before the next is submitted unless configured otherwise. This reduces 429 bursts and makes failures attributable to one shot.
+If Google requests sign-in, Ceo3 must pause for manual user sign-in. Account passwords, OTPs and other credentials are never requested, stored or typed by the media child.
 
-## Recovery
-- Atomic JSON writes protect individual local job/project records.
-- `running` jobs older than `CEO_MEDIA_RUNNING_LEASE_MS` become due again after a process crash.
-- Video provider polling does not consume normal submit retry attempts.
-- Poll errors have a separate bounded error budget.
-- Non-retryable guardrail/4xx provider errors fail fast.
+## AUTO routing
+`provider=auto` resolves independently by capability:
+- Gemini API is preferred when `GEMINI_API_KEY` is ready.
+- Without a Gemini key, image/anchor generation prefers Google AI Studio Web.
+- Without a Gemini key, video generation prefers Google Flow Web.
+- Browser routes remain serial by default to reduce credit/quota pressure and preserve continuity.
+- Mock is used only when explicitly selected or `CEO_MEDIA_AUTO_ALLOW_MOCK=true`.
 
-## Quota management
-Provider 429 responses use `Retry-After`/provider retry metadata when available. The job receives a delayed `nextRunAt`, and a process-wide provider cooldown prevents following jobs from immediately hammering the same provider.
+## External-action invariant
+`external.action` jobs are persisted as `waiting` but excluded from normal `JobStore.due()` auto-worker polling. They remain stable until Ceo3 explicitly calls `media.external.complete` or `media.external.fail`. This prevents browser actions from being re-fired repeatedly.
 
-## Persistence
-If no explicit data directory is set, Windows uses `%LOCALAPPDATA%\Ceo\media-data`. This keeps projects, jobs and assets outside the managed child-MCP install directory so addon updates do not erase media state.
+## V8 movie workflow
+For an API route, `media.movie.create` stays fully autonomous. For a browser route, the parent movie waits at each external stage and `media.movie.status` exposes `nextExternalAction`. Completing that action automatically allows the durable parent workflow to continue.
 
-## Provider boundary
-Callers use media capability contracts, never provider-specific endpoints. Model names and API base URLs are environment-controlled. An explicitly requested provider is strict by default and cannot silently degrade into Mock output.
+## CapCut bridge
+When `finalEditor=capcut`, the parent movie creates a durable `capcut.compose` external action with ordered clips, subtitle file and expected final path. Ceo3 should inspect CapCut doctor/version state first, prefer managed capcut-cli, and avoid forcing an old draft template into a newer CapCut schema. FFmpeg remains the reliable autonomous composer/fallback.
 
-## Continuity
-Character identity is represented by Character Bible + continuity tags + up to three reference images. Storyboard shots inherit context. Current Auto Director scores metadata continuity; Vision-based rendered-frame QA remains a P1 hardening item.
-
-## Composition
-FFmpeg is the canonical local renderer: concatenate generated shots, optional audio mix, optional subtitle burn-in, fast-start MP4 output. Normalize/loudness/exact-duration QA is the next composition hardening layer.
+## Recovery / quota / persistence
+- Atomic JSON writes protect job/project records.
+- Stale `running` jobs become due after `CEO_MEDIA_RUNNING_LEASE_MS`.
+- Provider polling does not consume normal submit retry attempts.
+- HTTP 429 honors retry metadata and activates provider-wide cooldown.
+- Windows defaults to `%LOCALAPPDATA%\Ceo\media-data` when no explicit data directory is configured.
+- External actions survive child restarts because their full recipe is persisted in the JobStore.

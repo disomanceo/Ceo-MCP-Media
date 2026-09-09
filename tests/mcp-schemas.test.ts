@@ -12,6 +12,10 @@ test("movie.create exposes a typed MCP schema", () => {
   assert.deepEqual(schema.properties.aspectRatio.enum, ["16:9", "9:16", "1:1"]);
   assert.deepEqual(schema.properties.resolution.enum, ["720p", "1080p", "4k"]);
   assert.equal(schema.properties.character.type, "object");
+  assert.ok(schema.properties.provider.enum.includes("auto"));
+  assert.ok(schema.properties.provider.enum.includes("flow-web"));
+  assert.ok(schema.properties.provider.enum.includes("ai-studio-web"));
+  assert.deepEqual(schema.properties.finalEditor.enum, ["auto", "ffmpeg", "capcut"]);
 });
 
 test("video.generate schema describes durable generation inputs", () => {

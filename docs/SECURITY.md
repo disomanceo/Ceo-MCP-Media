@@ -1,15 +1,17 @@
 # Security
 
-- API credentials come from environment variables only.
-- `.env` is ignored; only `.env.example` is committed.
-- Never place credentials inside project manifests, prompts, job events or Flow handoffs.
-- Remote provider errors are bounded before logging to reduce accidental secret/large-payload capture.
-- Paid provider calls are never required by tests; MockProvider is deterministic for image, video, voice and music jobs.
-- Google Flow is optional and receives only explicitly prepared prompts/assets.
-- Persistent runtime media data defaults outside the managed child install directory; addon updates should not erase projects/jobs/assets.
-- Explicit provider requests are strict by default, preventing an unavailable real provider from silently returning Mock artifacts.
-- Common third-party/franchise references can be detected and rewritten before paid generation through `media.preflight.check` / the V7 movie workflow.
-- Non-retryable 4xx/guardrail failures fail fast. 429 responses use bounded backoff and provider-wide cooldown.
-- Video downloads stream to disk when delivered by URL, reducing peak memory exposure for large media files.
-- MCP tools expose explicit typed JSON schemas with `additionalProperties: false` to reduce accidental/ambiguous arguments.
-- Before push/release run typecheck, tests, FFmpeg smoke, npm audit, staged diff check and secret scan.
+- API credentials come from environment variables only; `.env` is ignored.
+- V8 does not require a Gemini API credential. When AUTO selects Flow/AI Studio Web, browser sign-in remains user-controlled.
+- Browser actions must never request, type, store or proxy Google passwords, OTPs, recovery codes or session secrets. If sign-in is required, pause for the user to sign in manually.
+- External browser/editor actions persist only bounded workflow metadata: provider name, URL, prompts, reference file paths, semantic instructions and expected output path.
+- An external action is completed only after the referenced local output file exists.
+- External actions are excluded from automatic due-job polling, preventing repeated browser submissions/credit consumption.
+- Explicit API provider requests remain strict; unavailable Gemini does not silently return Mock artifacts.
+- Guardrail/non-retryable errors fail fast. 429 responses use bounded backoff and provider-wide cooldown.
+- Remote provider errors are bounded before logging.
+- Video downloads stream to disk when delivered by URL.
+- Persistent media data defaults outside the managed child install directory.
+- CapCut automatic publishing/upload and force-write/license bypass remain out of scope. Run doctor/version checks before draft mutation; do not force an old template into a newer app schema.
+- Google Flow portable handoff remains optional and contains no credentials.
+- Tests use deterministic MockProvider/browser-action simulation; paid generation is never required by the test suite.
+- Before release run typecheck, tests, FFmpeg smoke, npm audit, diff check and secret scan.
