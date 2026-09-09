@@ -12,12 +12,16 @@ const obj = (properties: Record<string, Schema>, required: string[] = []): Schem
 
 const schemas: Record<string, Schema> = {
   "media.movie.create": obj({
-    name: str("Project/movie name"), brief: str("Complete creative brief"), totalDurationSec: num("Total target duration; storyboard is split into <=8 second shots"), aspectRatio: aspect, resolution, fps: num(), provider,
-    character: obj({ name: str(), description: str(), wardrobe: str(), voice: str(), continuityTags: arr(str()) }, ["name", "description"]),
+    name: str("Project/movie name"), brief: str("Complete creative brief"), script: str("Optional full script; when supplied it is used to plan shots and is persisted in the production workspace"),
+    totalDurationSec: num("Total target duration; storyboard is split into <=8 second shots"), aspectRatio: aspect, resolution, fps: num(), provider,
+    character: obj({ name: str(), description: str(), wardrobe: str(), voice: str(), referenceImages: arr(str(), "Seed/reference image file paths, up to 3"), continuityTags: arr(str()) }, ["name", "description"]),
     anchorPrompt: str(), shotPrompts: arr(str()), dialogues: arr(str()), outputPath: str(), subtitlePath: str(), compose: bool(), finalEditor: editor,
+    generateVoice: bool(), voiceProvider: apiProvider, voiceLanguage: str(), voiceSpeed: num(), voiceStyle: str(),
+    generateMusic: bool(), musicProvider: apiProvider, musicPrompt: str(), musicMood: str(),
     autoRewriteGuardrails: bool(), videoConcurrency: num("1-3 for API/local providers; browser providers remain serial"), idempotencyKey: str(), timeoutMs: num()
   }, ["name", "brief", "character"]),
   "media.movie.status": obj({ jobId: str() }, ["jobId"]),
+  "media.movie.manifest": obj({ jobId: str() }, ["jobId"]),
   "media.preflight.check": obj({ prompt: str(), autoRewrite: bool() }, ["prompt"]),
   "media.studio.status": obj({}),
   "media.studio.route": obj({ capability: { type: "string", enum: ["image", "video"] }, provider }, ["capability"]),
@@ -35,7 +39,7 @@ const schemas: Record<string, Schema> = {
   "media.video.regenerate": obj({ jobId: str(), prompt: str(), provider: apiProvider, outputPath: str(), idempotencyKey: str() }, ["jobId"]),
   "media.audio.voice": obj({ projectId: str(), name: str(), text: str(), provider: apiProvider, outputPath: str(), voice: str(), language: str(), speed: num(), style: str(), idempotencyKey: str() }, ["text"]),
   "media.audio.music": obj({ projectId: str(), name: str(), prompt: str(), provider: apiProvider, outputPath: str(), durationSec: num(), mood: str(), instrumental: bool(), idempotencyKey: str() }, ["prompt"]),
-  "media.compose": obj({ projectId: str(), clips: arr(str()), outputPath: str(), subtitleFile: str(), audioFile: str(), idempotencyKey: str() }, ["clips", "outputPath"]),
+  "media.compose": obj({ projectId: str(), clips: arr(str()), outputPath: str(), subtitleFile: str(), audioFile: str(), musicFile: str(), idempotencyKey: str() }, ["clips", "outputPath"]),
   "media.subtitle.generate": obj({ projectId: str(), outputPath: str() }, ["projectId"]),
   "media.director.review": obj({ projectId: str(), threshold: num() }, ["projectId"]),
   "media.job.status": obj({ jobId: str() }, ["jobId"]),

@@ -1,4 +1,4 @@
-# Roadmap V1-V8
+# Roadmap V1-V9
 
 ## V1 - Foundation
 Standalone TypeScript MCP server, project manifests, storyboard planner, provider contracts, local asset/job stores, FFmpeg composer, durable job lifecycle and CLI.
@@ -35,25 +35,37 @@ Implemented:
 - `media.studio.status` / `media.studio.route` expose routing decisions.
 - `media.external.next` / `list` / `complete` / `fail` provide resumable Ceo3/Playwright browser handoff.
 - External browser actions are excluded from auto-worker due polling so they are never duplicated.
-- `media.movie.status` surfaces the next external action directly.
 - Browser-mode movies can use CapCut as the final editor via durable `capcut.compose` handoff.
-- CapCut handoff requires doctor/version checks and warns against old-template/new-app schema mismatch.
 - Browser sign-in is manual-only; the media system never stores or types Google credentials.
 - FFmpeg/ffprobe remains the canonical autonomous fallback and verification layer.
+
+## V9 - Production Workspace / Thin Command Pipeline
+Implemented:
+- Every `media.movie.create` job now creates a persistent production workspace instead of scattering generated files across generic asset folders.
+- Workspace contains `00-script`, `01-anchor`, `02-flow`, `03-audio`, `04-capcut`, `05-export`, plus a persistent `manifest.json`.
+- `media.movie.manifest` lets Ceo3 read the full local production recipe/progress from the movie job id, reducing the need to resend long scene payloads through ChatGPT/Chrome.
+- User-provided `character.referenceImages` are accepted at movie creation, used to generate the continuity anchor, then carried into later shot references.
+- Movie orchestration now has an explicit `audio` phase after shot/SRT completion.
+- Optional durable voice and music generation can be requested by the parent movie workflow.
+- CapCut handoff now receives subtitle, voice, music and manifest paths.
+- FFmpeg composition supports optional voice plus looped/ducked background music.
+- Movie outputs include `workspaceRoot` and `manifestPath` so follow-up commands can be short and deterministic.
+- V9 production-workspace integration test covers script files, seeded references, shot generation, SRT, voice/music and manifest progress.
 
 ## Production hardening next
 ### P1
 - Browser recipe adapters with semantic state verification for current Flow/AI Studio UI, including login-required/quota-required/completed states.
 - Local download watcher + asset checksum matching for browser-generated files.
+- Direct browser recipe runner that consumes the local manifest/action recipe without copying long prompts back through chat text.
 - CapCut draft adapter that can select a current compatible empty-project template automatically.
 - Vision-based rendered-frame QA: face, wardrobe, location, motion and shot continuity.
 - Auto-regenerate only low-quality shots based on visual QA.
-- FFmpeg normalize/loudness/exact-duration gate.
+- FFmpeg normalize/loudness/exact-duration gate and native-audio-aware mixing.
 - SQLite WAL index for larger histories and multi-process locking.
 - Asset hash cache, deduplication and retention cleanup.
 
 ### P2
-- Real TTS/music providers and loudness-aware mixing.
+- Real TTS/music providers and loudness-aware mixing/ducking.
 - Object storage/signed URLs for multi-machine workers.
 - Additional production media providers after orchestration/QA are stable.
 - Cost/credit/latency telemetry across API and browser routes.

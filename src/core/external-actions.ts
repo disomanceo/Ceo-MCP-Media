@@ -17,6 +17,9 @@ export interface ExternalActionInput {
   expectedOutputPath: string;
   clips?: string[];
   subtitleFile?: string;
+  voiceFile?: string;
+  musicFile?: string;
+  manifestPath?: string;
   projectName?: string;
   metadata?: Record<string, unknown>;
 }

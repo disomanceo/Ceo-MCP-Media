@@ -24,12 +24,14 @@ export interface MovieCharacterInput {
   description: string;
   wardrobe?: string;
   voice?: string;
+  referenceImages?: string[];
   continuityTags?: string[];
 }
 
 export interface MovieCreateInput {
   name: string;
   brief: string;
+  script?: string;
   totalDurationSec?: number;
   aspectRatio?: AspectRatio;
   resolution?: Resolution;
@@ -47,5 +49,14 @@ export interface MovieCreateInput {
   finalEditor?: FinalEditor;
   autoRewriteGuardrails?: boolean;
   videoConcurrency?: number;
+  generateVoice?: boolean;
+  voiceProvider?: "mock" | "gemini";
+  voiceLanguage?: string;
+  voiceSpeed?: number;
+  voiceStyle?: string;
+  generateMusic?: boolean;
+  musicProvider?: "mock" | "gemini";
+  musicPrompt?: string;
+  musicMood?: string;
   idempotencyKey?: string;
 }

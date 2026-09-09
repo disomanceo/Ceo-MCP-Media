@@ -11,9 +11,10 @@ import { reviewShot } from "./director.js";
 import { storyboardToSrt } from "./subtitles.js";
 import { dataDir, safeName, writeJsonAtomic } from "./utils.js";
 import { preflightPrompt } from "./preflight.js";
+import { movieWorkspace, prepareMovieWorkspace, readMovieManifest } from "./pipeline-workspace.js";
 
 export const TOOL_NAMES = [
-  "media.movie.create","media.movie.status","media.preflight.check","media.studio.status","media.studio.route",
+  "media.movie.create","media.movie.status","media.movie.manifest","media.preflight.check","media.studio.status","media.studio.route",
   "media.external.next","media.external.list","media.external.complete","media.external.fail",
   "media.project.create","media.project.list","media.project.get","media.character.lock","media.storyboard.plan",
   "media.image.generate","media.video.generate","media.video.regenerate","media.audio.voice","media.audio.music","media.compose","media.subtitle.generate","media.director.review",
@@ -70,17 +71,29 @@ export class MediaToolService {
       case "media.movie.create": {
         if (args.idempotencyKey) {
           const existing = await this.jobs.findByIdempotency(args.idempotencyKey);
-          if (existing) return { movieJobId: existing.id, projectId: existing.projectId, status: existing.status, reused: true };
+          if (existing) {
+            const existingProject = existing.projectId ? await this.projects.get(existing.projectId) : undefined;
+            return { movieJobId: existing.id, projectId: existing.projectId, status: existing.status, reused: true, workspaceRoot: existingProject ? movieWorkspace(existingProject).root : undefined };
+          }
         }
         const preference = args.provider ?? "auto";
         const [imageRoute, videoRoute] = await Promise.all([this.studio.resolve("image", preference), this.studio.resolve("video", preference)]);
         if (!imageRoute.ready) throw new Error(`No ready image route: ${imageRoute.reason}`);
         if (!videoRoute.ready) throw new Error(`No ready video route: ${videoRoute.reason}`);
         const checked = preflightPrompt(args.brief, args.autoRewriteGuardrails !== false);
+        const scriptChecked = args.script ? preflightPrompt(args.script, args.autoRewriteGuardrails !== false) : undefined;
+        const sourceScript = scriptChecked?.safePrompt || checked.safePrompt;
         const project = await this.projects.create({ name: args.name, brief: checked.safePrompt, aspectRatio: args.aspectRatio ?? "16:9", resolution: args.resolution ?? "1080p", fps: args.fps ?? 24 });
-        await this.projects.addCharacter(project.id, { name: args.character.name, description: args.character.description, wardrobe: args.character.wardrobe, voice: args.character.voice, referenceImages: [], continuityTags: args.character.continuityTags ?? [] });
+        await this.projects.addCharacter(project.id, {
+          name: args.character.name,
+          description: args.character.description,
+          wardrobe: args.character.wardrobe,
+          voice: args.character.voice,
+          referenceImages: (args.character.referenceImages ?? []).slice(0, 3),
+          continuityTags: args.character.continuityTags ?? []
+        });
         const hydrated = await this.projects.get(project.id);
-        const storyboard = planStoryboard({ projectId: project.id, title: args.title ?? project.name, brief: checked.safePrompt, totalDurationSec: args.totalDurationSec ?? 8, aspectRatio: project.aspectRatio, maxShotSec: 8, characters: hydrated.characters });
+        const storyboard = planStoryboard({ projectId: project.id, title: args.title ?? project.name, brief: sourceScript, totalDurationSec: args.totalDurationSec ?? 8, aspectRatio: project.aspectRatio, maxShotSec: 8, characters: hydrated.characters });
         for (let i = 0; i < storyboard.shots.length; i++) {
           if (args.shotPrompts?.[i]) storyboard.shots[i].prompt = preflightPrompt(args.shotPrompts[i], args.autoRewriteGuardrails !== false).safePrompt;
           if (args.dialogues?.[i]) storyboard.shots[i].dialogue = args.dialogues[i];
@@ -93,21 +106,37 @@ export class MediaToolService {
           provider: imageRoute.provider === videoRoute.provider ? imageRoute.provider : undefined,
           idempotencyKey: args.idempotencyKey, timeoutMs: args.timeoutMs,
           input: {
-            name: args.name, brief: checked.safePrompt, totalDurationSec: args.totalDurationSec ?? 8, aspectRatio: project.aspectRatio, resolution: project.resolution, fps: project.fps,
+            name: args.name, brief: checked.safePrompt, script: sourceScript, totalDurationSec: args.totalDurationSec ?? 8, aspectRatio: project.aspectRatio, resolution: project.resolution, fps: project.fps,
             provider: preference, resolvedImageProvider: imageRoute.provider, resolvedVideoProvider: videoRoute.provider,
-            character: args.character, anchorPrompt: args.anchorPrompt, shotPrompts: args.shotPrompts, dialogues: args.dialogues,
+            character: { ...args.character, referenceImages: (args.character.referenceImages ?? []).slice(0, 3) }, anchorPrompt: args.anchorPrompt, shotPrompts: args.shotPrompts, dialogues: args.dialogues,
             outputPath: args.outputPath, subtitlePath: args.subtitlePath, compose: args.compose !== false, finalEditor,
-            autoRewriteGuardrails: args.autoRewriteGuardrails !== false, videoConcurrency: args.videoConcurrency ?? 1, idempotencyKey: args.idempotencyKey
+            autoRewriteGuardrails: args.autoRewriteGuardrails !== false, videoConcurrency: args.videoConcurrency ?? 1,
+            generateVoice: args.generateVoice === true, voiceProvider: args.voiceProvider, voiceLanguage: args.voiceLanguage, voiceSpeed: args.voiceSpeed, voiceStyle: args.voiceStyle,
+            generateMusic: args.generateMusic === true, musicProvider: args.musicProvider, musicPrompt: args.musicPrompt, musicMood: args.musicMood,
+            idempotencyKey: args.idempotencyKey
           }
         });
-        return { movieJobId: job.id, projectId: project.id, status: job.status, preflight: checked, route: { image: imageRoute, video: videoRoute, finalEditor }, storyboard };
+        const currentProject = await this.projects.get(project.id);
+        const ws = await prepareMovieWorkspace(currentProject, job.id, job.input as any, { image: imageRoute, video: videoRoute, finalEditor });
+        job.providerState = { workspaceRoot: ws.root, manifestPath: ws.manifestPath };
+        await this.jobs.save(job);
+        return { movieJobId: job.id, projectId: project.id, status: job.status, preflight: checked, route: { image: imageRoute, video: videoRoute, finalEditor }, storyboard, workspaceRoot: ws.root, manifestPath: ws.manifestPath };
       }
 
       case "media.movie.status": {
         const job = await this.jobs.get(args.jobId);
         if (job.type !== "movie.create") throw new Error("job is not a movie workflow");
         const nextExternalAction = await this.external.next(job.projectId);
-        return { ...job, nextExternalAction };
+        const project = job.projectId ? await this.projects.get(job.projectId) : undefined;
+        const manifest = project ? await readMovieManifest(project) : null;
+        return { ...job, progress: (manifest as any)?.progress, manifestPath: project ? movieWorkspace(project).manifestPath : undefined, nextExternalAction };
+      }
+
+      case "media.movie.manifest": {
+        const job = await this.jobs.get(args.jobId);
+        if (job.type !== "movie.create" || !job.projectId) throw new Error("job is not a movie workflow");
+        const project = await this.projects.get(job.projectId);
+        return { manifestPath: movieWorkspace(project).manifestPath, manifest: await readMovieManifest(project) };
       }
 
       case "media.project.create": return this.projects.create(args);
@@ -149,7 +178,7 @@ export class MediaToolService {
         const outputPath = args.outputPath ?? path.join(dataDir(), "assets", `${safeName(args.name ?? "music")}-${Date.now()}.wav`);
         return this.jobs.create({ type: "audio.music", projectId: args.projectId, provider: args.provider, idempotencyKey: args.idempotencyKey, input: { prompt: args.prompt, outputPath, durationSec: args.durationSec, mood: args.mood, instrumental: args.instrumental ?? true } });
       }
-      case "media.compose": return this.jobs.create({ type: "compose", projectId: args.projectId, idempotencyKey: args.idempotencyKey, input: { clips: args.clips, outputPath: args.outputPath, subtitleFile: args.subtitleFile, audioFile: args.audioFile } });
+      case "media.compose": return this.jobs.create({ type: "compose", projectId: args.projectId, idempotencyKey: args.idempotencyKey, input: { clips: args.clips, outputPath: args.outputPath, subtitleFile: args.subtitleFile, audioFile: args.audioFile, musicFile: args.musicFile } });
       case "media.job.status": return this.jobs.get(args.jobId);
       case "media.job.list": return this.jobs.list();
       case "media.job.run_once": return this.runner.runOnce(args.jobId);
@@ -170,8 +199,9 @@ export class MediaToolService {
         await writeJsonAtomic(outputPath, handoff); return { outputPath, handoff };
       }
       case "media.capabilities": return {
-        versions: ["v1","v2","v3","v4","v5","v6","v7","v8"], durable: true, autoMoviePipeline: true, autoWorker: process.env.CEO_MEDIA_AUTO_WORKER !== "false",
+        versions: ["v1","v2","v3","v4","v5","v6","v7","v8","v9"], durable: true, autoMoviePipeline: true, autoWorker: process.env.CEO_MEDIA_AUTO_WORKER !== "false",
         studioRouter: true, browserProviders: ["flow-web","ai-studio-web"], browserExternalActions: true, capcutBridge: true,
+        productionWorkspace: true, persistentManifest: true, seededReferenceImages: true, audioStage: true,
         providerAgnostic: true, flowOptional: true, guardrailPreflight: true, staleRunningRecovery: true, maxReferenceImages: 3, maxShotSec: 8, audioJobs: ["voice","music"], tools: TOOL_NAMES
       };
       default: throw new Error(`Unknown tool: ${name}`);
