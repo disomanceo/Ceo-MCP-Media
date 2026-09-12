@@ -63,6 +63,15 @@ function normalizeKey(value) {
   return String(value || "default").replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 180) || "default";
 }
 
+function isFlowProjectUrl(value) {
+  return /https?:\/\/flow\.google\.com\/(?:u\/\d+\/)?project\//i.test(String(value || ""));
+}
+
+function flowHomeForUrl(value) {
+  const match = String(value || "").match(/^(https?:\/\/flow\.google\.com\/)(u\/\d+\/)/i);
+  return match ? `${match[1]}${match[2]}` : FLOW_URL;
+}
+
 function sessionFile(input = {}) {
   return path.join(sessionDir, `${normalizeKey(input.flowSessionKey || input.flowProjectKey || "default")}.json`);
 }
@@ -231,7 +240,7 @@ async function pickFlowPage(context, preferredUrl = "") {
       const url = page.url();
       let score = 0;
       if (preferred && url.startsWith(preferred)) score += 100;
-      if (/flow\.google\.com\/project\//i.test(url)) score += 50;
+      if (isFlowProjectUrl(url)) score += 50;
       else if (/flow\.google\.com/i.test(url)) score += 20;
       if (/flow\.google\.com\/about/i.test(url)) score -= 10;
       return { page, index, url, score };
@@ -299,9 +308,11 @@ async function inspectPage(page) {
 }
 
 async function enterFlow(page) {
-  await page.goto(FLOW_URL, { waitUntil: "domcontentloaded", timeout: 45_000 });
-  await page.waitForTimeout(1200);
   let state = await inspectPage(page);
+  if (state.app && !state.authRequired && !state.landing && !state.captcha) return state;
+  await page.goto(flowHomeForUrl(page.url()), { waitUntil: "domcontentloaded", timeout: 45_000 });
+  await page.waitForTimeout(1200);
+  state = await inspectPage(page);
   if (state.landing) {
     const start = page.getByRole("button", { name: /สร้างด้วย Google Flow|ลองใช้ Google Flow|Create with Google Flow|Try Google Flow/i }).first();
     if (await start.isVisible().catch(() => false)) {
@@ -402,13 +413,13 @@ async function ensureProjectPage(page, { forceNewProject = false } = {}) {
   let promptBox = await choosePromptBox(page);
   if (promptBox && !forceNewProject) return promptBox;
 
-  if (forceNewProject && /\/project\//i.test(page.url())) {
+  if (forceNewProject && isFlowProjectUrl(page.url())) {
     const home = page.getByRole("button", { name: /หน้าแรก|home/i }).first();
     if (await home.isVisible().catch(() => false)) {
       await home.click();
       await page.waitForTimeout(900);
     } else {
-      await page.goto(FLOW_URL, { waitUntil: "domcontentloaded", timeout: 45_000 });
+      await page.goto(flowHomeForUrl(page.url()), { waitUntil: "domcontentloaded", timeout: 45_000 });
       await page.waitForTimeout(900);
     }
   }
@@ -416,7 +427,7 @@ async function ensureProjectPage(page, { forceNewProject = false } = {}) {
   const create = page.getByRole("button", { name: /โปรเจ็กต์ใหม่|new project/i }).last();
   if (await create.isVisible().catch(() => false)) {
     await create.click();
-    await page.waitForURL(/flow\.google\.com\/project\//i, { timeout: 20_000 }).catch(() => {});
+    await page.waitForURL(/flow\.google\.com\/(?:u\/\d+\/)?project\//i, { timeout: 20_000 }).catch(() => {});
     await page.waitForTimeout(1800);
     promptBox = await choosePromptBox(page);
   }
@@ -666,7 +677,8 @@ async function prepareVideoPage(page, request) {
       await page.waitForTimeout(700);
     }
     state = await inspectPage(page);
-  } else if (fastFlowMode && /flow\.google\.com\/project\//i.test(currentUrl)) {
+  } else if (isFlowProjectUrl(currentUrl)) {
+    // Adopt the exact account-scoped project tab the user already opened, e.g. /u/1/project/...
     state = await inspectPage(page);
   } else {
     state = await enterFlow(page);
@@ -677,7 +689,7 @@ async function prepareVideoPage(page, request) {
     throw new Error("[AUTH_REQUIRED] Google Flow requires manual sign-in in the Ceo Flow browser profile");
   }
   await markAuth(true, state.url);
-  const shouldCreateProject = request.forceNewProject === true || (fastFlowMode && !fastSession?.projectUrl && Boolean(request.flowSessionKey || request.flowProjectKey));
+  const shouldCreateProject = request.forceNewProject === true;
   const promptBox = await ensureProjectPage(page, { forceNewProject: shouldCreateProject });
   if (!promptBox) throw new Error("[FLOW_UI_CHANGED] Could not locate the Google Flow prompt editor after opening a project");
 
