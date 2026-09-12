@@ -18,6 +18,7 @@
       "media.studio.route",
       "media.flow.local_status",
       "media.flow.local_auth",
+      "media.flow.prepare",
       "media.external.next",
       "media.external.complete",
       "media.preflight.check",
