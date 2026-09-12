@@ -96,9 +96,14 @@ export class MediaToolService {
           }
         }
         const preference = args.provider ?? "auto";
-        const [imageRoute, videoRoute] = await Promise.all([this.studio.resolve("image", preference), this.studio.resolve("video", preference)]);
-        if (!imageRoute.ready) throw new Error(`No ready image route: ${imageRoute.reason}`);
+        const videoRoute = await this.studio.resolve("video", preference);
         if (!videoRoute.ready) throw new Error(`No ready video route: ${videoRoute.reason}`);
+        const fastFlowMode = args.fastFlowMode ?? (videoRoute.provider === "flow-native");
+        const flowMovieUsesCurrentProject = videoRoute.provider === "flow-native" && fastFlowMode;
+        const imageRoute = flowMovieUsesCurrentProject
+          ? { capability: "image" as const, preference, provider: "flow-native" as const, mode: "native" as const, ready: true, reason: "FAST Flow movie reuses the current Flow project/seed assets and skips separate anchor image generation" }
+          : await this.studio.resolve("image", preference);
+        if (!imageRoute.ready) throw new Error(`No ready image route: ${imageRoute.reason}`);
         const checked = preflightPrompt(args.brief, args.autoRewriteGuardrails !== false);
         const scriptChecked = args.script ? preflightPrompt(args.script, args.autoRewriteGuardrails !== false) : undefined;
         const sourceScript = scriptChecked?.safePrompt || checked.safePrompt;
@@ -119,7 +124,6 @@ export class MediaToolService {
         }
         await this.projects.setStoryboard(project.id, storyboard);
         const browserMode = imageRoute.mode === "browser" || videoRoute.mode === "browser";
-        const fastFlowMode = args.fastFlowMode ?? (videoRoute.provider === "flow-native");
         const usePersistentFlowSession = args.usePersistentFlowSession ?? (videoRoute.provider === "flow-native");
         const finalEditor = args.finalEditor ?? (process.env.CEO_MEDIA_FINAL_EDITOR || "ffmpeg");
         const job = await this.jobs.create({

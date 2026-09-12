@@ -122,13 +122,19 @@ export class MovieOrchestrator {
 
     if (state.phase === "anchor") {
       const fastSeedReferences = uniquePaths(project.characters.flatMap((c) => c.referenceImages)).slice(0, 3);
-      if (!state.anchorJobId && !state.anchorPath && videoProvider === "flow-native" && input.fastFlowMode !== false && fastSeedReferences.length > 0) {
-        state.anchorPath = fastSeedReferences[0];
-        character.referenceImages = fastSeedReferences;
-        for (const shot of project.storyboard.shots) shot.referenceImages = fastSeedReferences;
-        await this.projects.save(project);
+      if (!state.anchorJobId && !state.anchorPath && videoProvider === "flow-native" && input.fastFlowMode !== false) {
+        if (fastSeedReferences.length > 0) {
+          state.anchorPath = fastSeedReferences[0];
+          character.referenceImages = fastSeedReferences;
+          for (const shot of project.storyboard.shots) shot.referenceImages = fastSeedReferences;
+          await this.projects.save(project);
+          state.phase = "shots";
+          job.events.push({ at: nowIso(), level: "info", message: "movie.anchor.reused-seed-reference", data: { outputPath: state.anchorPath, referenceCount: fastSeedReferences.length, fastFlowMode: true } });
+          return this.waiting(job, project, state, 10);
+        }
+        state.anchorPath = "";
         state.phase = "shots";
-        job.events.push({ at: nowIso(), level: "info", message: "movie.anchor.reused-seed-reference", data: { outputPath: state.anchorPath, referenceCount: fastSeedReferences.length, fastFlowMode: true } });
+        job.events.push({ at: nowIso(), level: "info", message: "movie.anchor.skipped-current-flow-project", data: { fastFlowMode: true, reason: "No local seed reference supplied; use the media/context already present in the pinned Flow project." } });
         return this.waiting(job, project, state, 10);
       }
       if (!state.anchorJobId) {
