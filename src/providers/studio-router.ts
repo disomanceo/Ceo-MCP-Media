@@ -39,10 +39,15 @@ export class StudioRouter {
     if (normalized === "flow-web") return { capability, preference, provider: "flow-web", mode: "browser", ready: enabled("flow"), requiresBrowser: true, url: FLOW_URL, reason: enabled("flow") ? "Google Flow browser bridge enabled" : "Google Flow browser bridge disabled" };
     if (normalized === "ai-studio-web") return { capability, preference, provider: "ai-studio-web", mode: "browser", ready: enabled("ai-studio"), requiresBrowser: true, url: AI_STUDIO_URL, reason: enabled("ai-studio") ? "Google AI Studio browser bridge enabled" : "Google AI Studio browser bridge disabled" };
 
+    const native = await new FlowNativeProvider().health();
+    const preferLocalFlowVideo = String(process.env.CEO_MEDIA_VIDEO_AUTO_PREFER_FLOW ?? "true").toLowerCase() !== "false";
+    if (capability === "video" && preferLocalFlowVideo && native.ready && native.capabilities.includes("video")) {
+      return { capability, preference, provider: "flow-native", mode: "native", ready: true, reason: "AUTO selected local Ceo Flow Browser before API video providers" };
+    }
+
     const gemini = await new GeminiProvider().health();
     if (gemini.ready && gemini.capabilities.includes(capability)) return { capability, preference, provider: "gemini", mode: "api", ready: true, reason: "AUTO selected Gemini API because credential is available" };
 
-    const native = await new FlowNativeProvider().health();
     if (native.ready && native.capabilities.includes(capability)) return { capability, preference, provider: "flow-native", mode: "native", ready: true, reason: "AUTO selected configured Flow Native provider" };
 
     if (capability === "image") {

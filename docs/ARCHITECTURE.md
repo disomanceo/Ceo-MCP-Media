@@ -75,9 +75,9 @@ If Google requests sign-in, Ceo3 must pause for manual user sign-in. Account pas
 ## AUTO routing
 
 `provider=auto` resolves independently by capability:
-- Gemini API is preferred when `GEMINI_API_KEY` is ready.
-- Without a Gemini key, image/anchor generation prefers Google AI Studio Web.
-- Without a Gemini key, video generation prefers the authenticated bundled Flow Native driver; Google Flow Web remains fallback.
+- For image/anchor generation, Gemini API is preferred when `GEMINI_API_KEY` is ready; otherwise Google AI Studio Web is preferred.
+- For video generation, the authenticated bundled Flow Native driver is preferred first; Gemini API is the API fallback, then Google Flow Web remains the browser fallback.
+- Set `CEO_MEDIA_VIDEO_AUTO_PREFER_FLOW=false` only when API-first video routing is intentionally desired.
 - Browser routes remain serial by default to reduce credit/quota pressure and preserve continuity.
 - Mock is used only when explicitly selected or `CEO_MEDIA_AUTO_ALLOW_MOCK=true`.
 

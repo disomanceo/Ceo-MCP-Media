@@ -2,7 +2,7 @@
   "schema": "ceo.child-mcp.v1",
   "id": "ceo-mcp-media",
   "name": "Ceo MCP Media",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "transport": "stdio",
   "command": "node",
   "args": ["dist/src/mcp/server.js"],
@@ -32,7 +32,7 @@
     "expandOnIntent": true
   },
   "delegation": {
-    "accepts": ["media", "image", "video", "storyboard", "movie", "film", "audio", "subtitle", "render", "flow", "google flow", "ai studio", "google ai studio", "capcut", "browser studio", "studio router", "ภาพ", "วิดีโอ", "คลิป", "หนัง", "หนังสั้น", "สตอรี่บอร์ด", "เสียง", "ซับ", "เรนเดอร์"],
+    "accepts": ["media", "image", "video", "storyboard", "movie", "film", "audio", "subtitle", "render", "flow", "google flow", "ai studio", "google ai studio", "capcut", "browser studio", "studio router", "เธ เธฒเธ", "เธงเธดเธ”เธตเนเธญ", "เธเธฅเธดเธ", "เธซเธเธฑเธ", "เธซเธเธฑเธเธชเธฑเนเธ", "เธชเธ•เธญเธฃเธตเนเธเธญเธฃเนเธ”", "เน€เธชเธตเธขเธ", "เธเธฑเธ", "เน€เธฃเธเน€เธ”เธญเธฃเน"],
     "durableJobs": true,
     "nonBlockingGeneration": true,
     "autoMoviePipeline": true,

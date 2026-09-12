@@ -60,7 +60,7 @@ Each movie gets its own stable workspace under the media data directory:
 
 ## V10 orchestration hardening
 
-- `provider=flow-native` executes a configured local/native Flow adapter through structured stdin/stdout JSON; AUTO prefers Gemini API, then Flow Native, then browser routes.
+- `provider=flow-native` executes a configured local/native Flow adapter through structured stdin/stdout JSON; for video, AUTO prefers the local Ceo Flow Browser, then Gemini API, then browser fallback routes.
 - Asset Registry assigns stable `asset-<sha256>` identities and records path, project/job provenance and content hash for generated/downloaded assets.
 - Idempotency keys are request-bound: identical requests reuse the existing job; a changed request with the same key fails with `IDEMPOTENCY_CONFLICT`.
 - Durable worker execution is bounded to four concurrent due jobs; browser external actions remain serial/manual and are never auto-resubmitted.
@@ -74,7 +74,7 @@ Each movie gets its own stable workspace under the media data directory:
 - `media.flow.local_auth` with `action=open` opens the dedicated Ceo Flow profile for the user to sign in manually; `action=check` verifies the session. Passwords, OTPs and CAPTCHA answers are never typed or stored by Ceo MCP Media.
 - The bundled driver stores operation state under `%LOCALAPPDATA%\Ceo\media-data\flow-native` and uses `%LOCALAPPDATA%\Ceo\flow-browser-profile` for the dedicated browser profile by default.
 - Video submission uses an exact-once guard immediately before the credit-spending Generate click. If submission state becomes uncertain, the operation fails closed rather than automatically spending credits twice.
-- AUTO routing is `Gemini API -> authenticated local Flow Native driver -> Flow Web external action`; image/anchor work still prefers Gemini or AI Studio Web because the bundled V11 Flow driver currently exposes video generation only.
+- AUTO video routing is `authenticated local Flow Native driver -> Gemini API fallback -> Flow Web external action`; image/anchor work still prefers Gemini or AI Studio Web because the bundled V11 Flow driver currently exposes video generation only.
 
 ## Reference images / character continuity
 
@@ -89,8 +89,8 @@ Set `generateVoice=true` and/or `generateMusic=true` to insert durable audio job
 Useful tools:
 - `media.studio.status` — inspect AUTO route choices.
 - `media.studio.route` — resolve image/video route without generating.
-- `media.flow.local_status` ? inspect the local Ceo Flow Browser driver and authentication readiness.
-- `media.flow.local_auth` ? open/check the dedicated Google Flow browser profile for manual sign-in.
+- `media.flow.local_status` - inspect the local Ceo Flow Browser driver and authentication readiness.
+- `media.flow.local_auth` - open/check the dedicated Google Flow browser profile for manual sign-in.
 - `media.external.next` — read the next browser/CapCut action Ceo3 should perform.
 - `media.external.complete` — attach the downloaded/exported local file and resume the movie workflow.
 - `media.external.fail` — record a browser/editor failure without corrupting the parent workflow.
