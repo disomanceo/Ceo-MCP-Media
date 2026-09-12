@@ -201,7 +201,8 @@ async function launchInteractiveSession() {
   const executablePath = chromePath();
   if (!executablePath) throw new Error("[BROWSER_NOT_FOUND] Google Chrome or Microsoft Edge was not found");
   await ensureDirs();
-  if (!await cdpReady()) {
+  const reusedBrowser = await cdpReady();
+  if (!reusedBrowser) {
     const args = [
       `--user-data-dir=${profileDir}`,
       `--remote-debugging-port=${INTERACTIVE_CDP_PORT}`,
@@ -219,7 +220,26 @@ async function launchInteractiveSession() {
   const context = browser.contexts()[0];
   if (!context) throw new Error("[FLOW_SESSION_UNAVAILABLE] Visible Ceo Flow browser has no usable context");
   externalSessionUsed = true;
-  return { context, browser, external: true, mode: "interactive-cdp" };
+  return { context, browser, external: true, mode: reusedBrowser ? "interactive-cdp-attached" : "interactive-cdp-launched", reusedBrowser };
+}
+
+async function pickFlowPage(context, preferredUrl = "") {
+  const pages = context.pages();
+  const preferred = String(preferredUrl || "");
+  const ranked = pages
+    .map((page, index) => {
+      const url = page.url();
+      let score = 0;
+      if (preferred && url.startsWith(preferred)) score += 100;
+      if (/flow\.google\.com\/project\//i.test(url)) score += 50;
+      else if (/flow\.google\.com/i.test(url)) score += 20;
+      if (/flow\.google\.com\/about/i.test(url)) score -= 10;
+      return { page, index, url, score };
+    })
+    .sort((a, b) => b.score - a.score || b.index - a.index);
+  const selected = ranked.find((item) => item.score > 0)?.page || pages[0] || await context.newPage();
+  await selected.bringToFront().catch(() => {});
+  return selected;
 }
 
 async function acquireFlowSession({ interactive = false } = {}) {
@@ -311,11 +331,12 @@ async function authCheck() {
   const session = await acquireFlowSession({ interactive: true });
   const context = session.context;
   try {
-    const page = context.pages()[0] || await context.newPage();
-    const state = await enterFlow(page);
+    const page = await pickFlowPage(context);
+    let state = await inspectPage(page);
+    if (!state.app && !state.captcha && !state.authRequired) state = await enterFlow(page);
     const authenticated = state.app && !state.captcha && !state.authRequired;
     const saved = await markAuth(authenticated, state.url, { captcha: state.captcha, landing: state.landing });
-    return { ...saved, profileDir, cdpUrl: INTERACTIVE_CDP_URL, reason: authenticated ? "Google Flow visible browser session is ready" : state.captcha ? "CAPTCHA requires manual completion" : "Google sign-in is required" };
+    return { ...saved, profileDir, cdpUrl: INTERACTIVE_CDP_URL, sessionMode: session.mode, attachedExistingWindow: session.reusedBrowser === true, pageUrl: page.url(), reason: authenticated ? "Google Flow visible browser session is ready" : state.captcha ? "CAPTCHA requires manual completion" : "Google sign-in is required" };
   } finally {
     await releaseFlowSession(session);
   }
@@ -709,6 +730,42 @@ async function prepareVideoPage(page, request) {
   };
 }
 
+async function videoPrepare(request) {
+  await ensureDirs();
+  const auth = await authState();
+  if (!auth.authenticated) throw new Error("[AUTH_REQUIRED] Ceo Flow Browser is not authenticated; run media.flow.local_auth action=open then action=check");
+  const owner = `prepare-${crypto.randomUUID()}`;
+  const releaseSubmission = await acquireSubmissionLock(owner);
+  let session;
+  try {
+    session = await acquireFlowSession({ interactive: true });
+    const context = session.context;
+    const fastFlowMode = request.fastFlowMode !== false;
+    const fastSession = fastFlowMode ? await loadFastSession(request) : null;
+    const page = await pickFlowPage(context, fastSession?.projectUrl || "");
+    const prepared = await prepareVideoPage(page, request);
+    return {
+      prepared: true,
+      generationStarted: false,
+      creditsRequested: false,
+      sessionMode: session.mode,
+      attachedExistingWindow: session.reusedBrowser === true,
+      pageUrl: page.url(),
+      projectUrl: prepared.projectUrl,
+      fastFlowMode: prepared.fastFlowMode,
+      fastSessionKey: prepared.fastSessionKey,
+      references: prepared.references,
+      firstFrame: prepared.firstFrame,
+      aspect: prepared.aspect,
+      settings: prepared.settings,
+      warnings: prepared.warnings
+    };
+  } finally {
+    await releaseFlowSession(session);
+    await releaseSubmission();
+  }
+}
+
 async function videoStart(request) {
   await ensureDirs();
   const fastFlowMode = request.fastFlowMode !== false;
@@ -730,9 +787,11 @@ async function videoStart(request) {
   try {
     session = await acquireFlowSession({ interactive: true });
     state.sessionMode = session.mode;
-    pushEvent(state, "flow.browser.reused", { mode: session.mode, external: session.external === true });
+    state.attachedExistingWindow = session.reusedBrowser === true;
+    pushEvent(state, "flow.browser.reused", { mode: session.mode, external: session.external === true, attachedExistingWindow: state.attachedExistingWindow });
     const context = session.context;
-    const page = context.pages()[0] || await context.newPage();
+    const fastSession = fastFlowMode ? await loadFastSession(request) : null;
+    const page = await pickFlowPage(context, fastSession?.projectUrl || "");
     const prepared = await prepareVideoPage(page, request);
     state.warnings = prepared.warnings;
     state.referenceUpload = prepared.references;
@@ -886,8 +945,8 @@ async function videoPoll(operationId) {
   const session = await acquireFlowSession({ interactive: true });
   const context = session.context;
   try {
-    const page = context.pages()[0] || await context.newPage();
     const targetUrl = state.pageUrl || FLOW_URL;
+    const page = await pickFlowPage(context, targetUrl);
     if (!page.url().startsWith(targetUrl)) await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
     await page.waitForTimeout(500);
     const pageState = await inspectPage(page);
@@ -974,6 +1033,7 @@ async function main() {
   else if (operation === "auth.check") result = await authCheck();
   else if (operation === "status") result = await status(input);
   else if (operation === "image.generate") throw new Error("[UNSUPPORTED_IMAGE] Ceo Flow Browser native driver currently exposes video generation only; image/anchor remains on AI Studio Web or Gemini API");
+  else if (operation === "video.prepare") result = await videoPrepare(input);
   else if (operation === "video.start") result = await videoStart(input);
   else if (operation === "video.poll") result = await videoPoll(String(input.operationId || ""));
   else if (operation === "video.download") result = await videoDownload(input);

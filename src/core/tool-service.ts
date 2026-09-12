@@ -23,7 +23,7 @@ export const TOOL_NAMES = [
   "media.ffmpeg.status","media.ffmpeg.doctor","media.ffmpeg.contract","media.ffmpeg.render","media.ffmpeg.probe","media.ffmpeg.check","media.ffmpeg.look",
   "media.project.create","media.project.list","media.project.get","media.character.lock","media.storyboard.plan",
   "media.image.generate","media.video.generate","media.video.regenerate","media.audio.voice","media.audio.music","media.compose","media.subtitle.generate","media.director.review",
-  "media.job.status","media.job.list","media.job.run_once","media.job.tick","media.job.cancel","media.provider.status","media.flow.local_status","media.flow.local_auth","media.flow.handoff","media.capabilities"
+  "media.job.status","media.job.list","media.job.run_once","media.job.tick","media.job.cancel","media.provider.status","media.flow.local_status","media.flow.local_auth","media.flow.prepare","media.flow.handoff","media.capabilities"
 ];
 
 export class MediaToolService {
@@ -212,6 +212,24 @@ export class MediaToolService {
         const action = String(args.action || "check");
         if (!["open", "check"].includes(action)) throw new Error("media.flow.local_auth action must be open or check");
         return invokeFlowNative(action === "open" ? "auth.open" : "auth.check", {});
+      }
+      case "media.flow.prepare": {
+        const p = args.projectId ? await this.projects.get(args.projectId) : undefined;
+        const checked = preflightPrompt(args.prompt, args.autoRewriteGuardrails === true);
+        return invokeFlowNative("video.prepare", {
+          prompt: checked.safePrompt,
+          outputPath: args.outputPath || "",
+          aspectRatio: args.aspectRatio ?? p?.aspectRatio ?? "16:9",
+          resolution: args.resolution ?? p?.resolution ?? "720p",
+          durationSec: Math.min(8, args.durationSec ?? 8),
+          referenceImages: (args.referenceImages ?? []).slice(0, 3),
+          firstFrame: args.firstFrame,
+          lastFrame: args.lastFrame,
+          fastFlowMode: args.fastFlowMode ?? true,
+          usePersistentFlowSession: args.usePersistentFlowSession ?? true,
+          flowSessionKey: args.flowSessionKey || p?.id || "prepare",
+          flowProjectKey: args.flowProjectKey || p?.id || "prepare"
+        });
       }
       case "media.director.review": {
         const p = await this.projects.get(args.projectId); if (!p.storyboard) throw new Error("project has no storyboard");

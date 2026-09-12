@@ -36,6 +36,7 @@ const descriptions: Record<string, string> = {
   "media.provider.status": "Read executable provider and Studio Router readiness without generating media.",
   "media.flow.local_status": "Read the bundled Ceo Flow Browser driver readiness, Chrome path and dedicated-profile authentication state without generating media.",
   "media.flow.local_auth": "Open the dedicated Ceo Flow browser profile for manual Google sign-in, or verify that the signed-in session is ready. The media service never types passwords, OTPs or CAPTCHA answers.",
+  "media.flow.prepare": "Attach to the visible Ceo Flow browser when available, reuse the best Flow project tab, configure settings/references and fill the prompt without clicking Generate or spending generation credits.",
   "media.flow.handoff": "Prepare a portable Google Flow handoff package.", "media.capabilities": "Return V1-V11 capability manifest, including the local Flow Browser driver, Flow Native, Asset Registry, ffmpeg-skill and bounded parallel execution."
 };
 

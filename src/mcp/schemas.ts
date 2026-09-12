@@ -60,6 +60,7 @@ const schemas: Record<string, Schema> = {
   "media.provider.status": obj({}),
   "media.flow.local_status": obj({}),
   "media.flow.local_auth": obj({ action: { type: "string", enum: ["open", "check"] } }, ["action"]),
+  "media.flow.prepare": obj({ projectId: str(), prompt: str(), outputPath: str(), aspectRatio: aspect, resolution, durationSec: num(), referenceImages: arr(str()), firstFrame: str(), lastFrame: str(), fastFlowMode: bool(), usePersistentFlowSession: bool(), flowSessionKey: str(), flowProjectKey: str(), autoRewriteGuardrails: bool() }, ["prompt"]),
   "media.flow.handoff": obj({ projectId: str(), outputPath: str() }, ["projectId"]),
   "media.capabilities": obj({})
 };
