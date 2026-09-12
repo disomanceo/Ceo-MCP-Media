@@ -2,11 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { StudioRouter } from "../src/providers/studio-router.js";
 
-test("AUTO uses AI Studio for images and Flow for video when Gemini key is missing", async () => {
+test("AUTO uses AI Studio for images and Flow Web for video when API/native routes are unavailable", async () => {
   const oldKey = process.env.GEMINI_API_KEY;
+  const oldCommand = process.env.CEO_MEDIA_FLOW_NATIVE_COMMAND;
+  const oldArgs = process.env.CEO_MEDIA_FLOW_NATIVE_ARGS_JSON;
   delete process.env.GEMINI_API_KEY;
   process.env.CEO_MEDIA_FLOW_WEB = "true";
   process.env.CEO_MEDIA_AI_STUDIO_WEB = "true";
+  process.env.CEO_MEDIA_FLOW_NATIVE_COMMAND = process.execPath;
+  process.env.CEO_MEDIA_FLOW_NATIVE_ARGS_JSON = JSON.stringify([
+    "-e",
+    "process.stdout.write(JSON.stringify({ready:false,capabilities:[],reason:'test-unavailable'}));"
+  ]);
   try {
     const router = new StudioRouter();
     const image = await router.resolve("image", "auto");
@@ -17,9 +24,10 @@ test("AUTO uses AI Studio for images and Flow for video when Gemini key is missi
     assert.equal(video.mode, "browser");
   } finally {
     if (oldKey == null) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = oldKey;
+    if (oldCommand == null) delete process.env.CEO_MEDIA_FLOW_NATIVE_COMMAND; else process.env.CEO_MEDIA_FLOW_NATIVE_COMMAND = oldCommand;
+    if (oldArgs == null) delete process.env.CEO_MEDIA_FLOW_NATIVE_ARGS_JSON; else process.env.CEO_MEDIA_FLOW_NATIVE_ARGS_JSON = oldArgs;
   }
 });
-
 test("AUTO prefers local Flow Native for video even when Gemini API is available", async () => {
   const oldKey = process.env.GEMINI_API_KEY;
   const oldCommand = process.env.CEO_MEDIA_FLOW_NATIVE_COMMAND;

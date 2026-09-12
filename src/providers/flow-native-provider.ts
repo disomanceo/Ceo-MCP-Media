@@ -38,7 +38,10 @@ function providerError(operation: string, exitCode: number, stderr: string): Pro
   const code = message.match(/\[([A-Z0-9_]+)\]/)?.[1] || "FLOW_NATIVE_FAILED";
   const nonRetryable = new Set([
     "AUTH_REQUIRED", "CAPTCHA_REQUIRED", "BROWSER_NOT_FOUND", "FLOW_UI_CHANGED", "REFERENCE_NOT_FOUND",
-    "SETTINGS_NOT_CONFIRMED", "SUBMISSION_UNCERTAIN", "UNSUPPORTED_IMAGE", "UNSUPPORTED_OPERATION", "INVALID_INPUT"
+    "SETTINGS_NOT_CONFIRMED", "START_FRAME_NOT_CONFIRMED", "UPLOAD_INCOMPLETE", "PROMPT_NOT_COMMITTED",
+    "FLOW_UI_NOT_READY", "FLOW_PROFILE_BUSY", "FLOW_SESSION_UNAVAILABLE", "FLOW_UNUSUAL_ACTIVITY",
+    "FLOW_PERSON_POLICY", "FLOW_GENERATION_RECORD_MISSING", "SUBMISSION_UNCERTAIN",
+    "UNSUPPORTED_IMAGE", "UNSUPPORTED_OPERATION", "INVALID_INPUT"
   ]);
   return new ProviderError(`Flow Native ${operation}: ${message.slice(-4000)}`, { retryable: !nonRetryable.has(code), code });
 }

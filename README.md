@@ -72,6 +72,8 @@ Each movie gets its own stable workspace under the media data directory:
 
 - `media.flow.local_status` reports Chrome detection, local state/profile paths and authentication readiness without generating media.
 - `media.flow.local_auth` with `action=open` opens the dedicated Ceo Flow profile for the user to sign in manually; `action=check` verifies the session. Passwords, OTPs and CAPTCHA answers are never typed or stored by Ceo MCP Media.
+- Flow generation/polling defaults to one normal **visible Chrome** session exposed only on local CDP (`127.0.0.1`, default port `9223`). This avoids relying on the headless-only path and keeps authentication/project state in the dedicated Ceo Flow profile.
+- The driver classifies Flow blockers explicitly (`FLOW_UNUSUAL_ACTIVITY`, `FLOW_PERSON_POLICY`, `FLOW_GENERATION_RECORD_MISSING`) and fails closed. It never retries these states automatically or attempts to bypass Google anti-abuse/policy checks.
 - The bundled driver stores operation state under `%LOCALAPPDATA%\Ceo\media-data\flow-native` and uses `%LOCALAPPDATA%\Ceo\flow-browser-profile` for the dedicated browser profile by default.
 - Video submission uses an exact-once guard immediately before the credit-spending Generate click. If submission state becomes uncertain, the operation fails closed rather than automatically spending credits twice.
 - AUTO video routing is `authenticated local Flow Native driver -> Gemini API fallback -> Flow Web external action`; image/anchor work still prefers Gemini or AI Studio Web because the bundled V11 Flow driver currently exposes video generation only.
@@ -134,7 +136,7 @@ npm test
 npm run build
 ```
 
-A Gemini API key is optional. Without it, leave `GEMINI_API_KEY` blank. For local Google Flow video automation, run `npm run flow:auth`, sign in manually in the dedicated Ceo profile, close that browser window, then run `npm run flow:auth-check`. Flow Web remains available as fallback.
+A Gemini API key is optional. Without it, leave `GEMINI_API_KEY` blank. For local Google Flow video automation, run `npm run flow:auth`, sign in manually in the dedicated Ceo profile, and **leave that Ceo Flow browser open while media jobs are running**. Then run `npm run flow:auth-check`. The driver reuses that visible authenticated session through local CDP; Flow Web remains available as fallback.
 
 Start MCP stdio server:
 

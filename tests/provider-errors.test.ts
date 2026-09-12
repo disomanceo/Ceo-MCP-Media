@@ -7,6 +7,7 @@ import { JobStore } from "../src/core/job-store.js";
 import { JobRunner } from "../src/core/job-runner.js";
 import { ProviderRouter } from "../src/providers/router.js";
 import { ProviderError, type MediaProvider } from "../src/providers/provider.js";
+import { invokeFlowNative } from "../src/providers/flow-native-provider.js";
 import { clearProviderCooldown, getProviderCooldown } from "../src/providers/quota-manager.js";
 
 class RateLimitedGemini implements MediaProvider {
@@ -48,4 +49,25 @@ test("guardrail errors fail fast instead of wasting retries", async () => {
   const done = await runner.runOnce(job.id);
   assert.equal(done.status, "failed");
   assert.equal(done.attempts, 1);
+});
+
+test("Flow policy and anti-abuse blockers are non-retryable", async () => {
+  const oldCommand = process.env.CEO_MEDIA_FLOW_NATIVE_COMMAND;
+  const oldArgs = process.env.CEO_MEDIA_FLOW_NATIVE_ARGS_JSON;
+  process.env.CEO_MEDIA_FLOW_NATIVE_COMMAND = process.execPath;
+  try {
+    for (const code of ["FLOW_PERSON_POLICY", "FLOW_UNUSUAL_ACTIVITY"]) {
+      process.env.CEO_MEDIA_FLOW_NATIVE_ARGS_JSON = JSON.stringify([
+        "-e",
+        `process.stderr.write("[${code}] blocked by Flow"); process.exit(1);`
+      ]);
+      await assert.rejects(
+        () => invokeFlowNative("video.start", {}),
+        (error: unknown) => error instanceof ProviderError && error.code === code && error.retryable === false
+      );
+    }
+  } finally {
+    if (oldCommand == null) delete process.env.CEO_MEDIA_FLOW_NATIVE_COMMAND; else process.env.CEO_MEDIA_FLOW_NATIVE_COMMAND = oldCommand;
+    if (oldArgs == null) delete process.env.CEO_MEDIA_FLOW_NATIVE_ARGS_JSON; else process.env.CEO_MEDIA_FLOW_NATIVE_ARGS_JSON = oldArgs;
+  }
 });
