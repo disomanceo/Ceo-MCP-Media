@@ -1,4 +1,4 @@
-# Roadmap V1-V10
+# Roadmap V1-V12
 
 ## V1 - Foundation
 Standalone TypeScript MCP server, project manifests, storyboard planner, provider contracts, local asset/job stores, FFmpeg composer, durable job lifecycle and CLI.
@@ -63,6 +63,16 @@ Implemented:
 - FFmpeg composition uses skill render/probe/loudness/delivery/contact-sheet verification when the exact pin is usable, with legacy FFmpeg fallback only when the skill is unavailable.
 - MCP schemas/tools expose Asset Registry and FFmpeg Skill surfaces; manifests/capabilities report V10.
 - V10 regression tests cover idempotency conflict, content identity, bounded 4-worker execution and skill pin metadata.
+
+## V12 - Temporal Continuity Chain
+Implemented:
+- Multi-shot movie jobs default to strict temporal continuity.
+- Strict jobs run video shots serially even when the provider could run them in parallel.
+- Every completed shot yields a near-final handoff frame; Shot N end frame becomes Shot N+1 Start Frame.
+- Flow Native uses the actual Flow Start Frame slot; Gemini/Veo uses its first-frame image input; browser external actions explicitly carry the first-frame path.
+- Director prompt injection locks pose/action momentum, identity, screen direction, camera language, lighting and environment and forbids unexplained resets/re-staging.
+- Production manifests persist `startFramePath`, `endFramePath`, `actionHandoff`, `cameraLock`, transition and continuity mode for deterministic recovery/QA.
+- `continuityMode=off` remains available for intentionally independent shots.
 
 ## Production hardening next
 ### P1

@@ -23,6 +23,7 @@ export interface MovieWorkspace {
   finalPath: string;
   shotPath(index: number): string;
   shotPromptPath(index: number): string;
+  shotEndFramePath(index: number): string;
 }
 
 export function movieWorkspace(project: MediaProject): MovieWorkspace {
@@ -52,7 +53,8 @@ export function movieWorkspace(project: MediaProject): MovieWorkspace {
     exportPlanPath: path.join(exportDir, "export.json"),
     finalPath: path.join(exportDir, "final.mp4"),
     shotPath: (index: number) => path.join(scenesDir, `shot${String(index + 1).padStart(2, "0")}.mp4`),
-    shotPromptPath: (index: number) => path.join(scenesDir, `shot${String(index + 1).padStart(2, "0")}.md`)
+    shotPromptPath: (index: number) => path.join(scenesDir, `shot${String(index + 1).padStart(2, "0")}.md`),
+    shotEndFramePath: (index: number) => path.join(scenesDir, `shot${String(index + 1).padStart(2, "0")}-end.jpg`)
   };
 }
 
@@ -70,6 +72,13 @@ function shotMarkdown(project: MediaProject, index: number): string {
     shot.prompt,
     "",
     "## Continuity",
+    `Mode: ${shot.continuityMode ?? "strict"}`,
+    `Start frame required: ${shot.startFrameRequired === true ? "yes" : "no"}`,
+    `Start frame: ${shot.startFramePath ?? "runtime handoff / anchor"}`,
+    `End frame: ${shot.endFramePath ?? "generated after shot completion"}`,
+    `Camera lock: ${shot.cameraLock ?? shot.camera ?? "preserve previous camera language"}`,
+    `Action handoff: ${shot.actionHandoff ?? "continue action without reset"}`,
+    `Transition: ${shot.transition ?? "continuous"}`,
     shot.continuityTags.length ? shot.continuityTags.map((x) => `- ${x}`).join("\n") : "- use project character/reference lock"
   ].join("\n");
 }
@@ -92,8 +101,8 @@ export async function prepareMovieWorkspace(project: MediaProject, movieJobId: s
   ].join("\n"), "utf8");
   await writeJsonAtomic(ws.exportPlanPath, { aspectRatio: project.aspectRatio, resolution: project.resolution, fps: project.fps, outputPath: input.outputPath || ws.finalPath });
   await writeJsonAtomic(ws.manifestPath, {
-    version: 2,
-    pipeline: "ceo-mcp-media-v10",
+    version: 3,
+    pipeline: "ceo-mcp-media-v12",
     movieJobId,
     projectId: project.id,
     name: project.name,
@@ -113,7 +122,7 @@ export async function prepareMovieWorkspace(project: MediaProject, movieJobId: s
       exportPlan: ws.exportPlanPath,
       final: input.outputPath || ws.finalPath
     },
-    shots: project.storyboard?.shots.map((shot, i) => ({ index: i + 1, id: shot.id, durationSec: shot.durationSec, status: shot.status || "planned", promptFile: ws.shotPromptPath(i), outputPath: ws.shotPath(i) })) ?? []
+    shots: project.storyboard?.shots.map((shot, i) => ({ index: i + 1, id: shot.id, durationSec: shot.durationSec, status: shot.status || "planned", continuityMode: shot.continuityMode ?? "strict", startFrameRequired: shot.startFrameRequired === true, startFramePath: shot.startFramePath, endFramePath: shot.endFramePath || ws.shotEndFramePath(i), actionHandoff: shot.actionHandoff, cameraLock: shot.cameraLock, transition: shot.transition, promptFile: ws.shotPromptPath(i), outputPath: ws.shotPath(i) })) ?? []
   });
   return ws;
 }
@@ -126,8 +135,8 @@ export async function updateMovieManifest(project: MediaProject, job: MediaJob<M
   const completedShots = shots.filter((s) => Boolean(s.assetPath) && ["generated", "approved"].includes(String(s.status))).length;
   await writeJsonAtomic(ws.manifestPath, {
     ...previous,
-    version: 2,
-    pipeline: "ceo-mcp-media-v10",
+    version: 3,
+    pipeline: "ceo-mcp-media-v12",
     movieJobId: job.id,
     projectId: project.id,
     name: project.name,
@@ -155,7 +164,7 @@ export async function updateMovieManifest(project: MediaProject, job: MediaJob<M
       exportPlan: ws.exportPlanPath,
       final: (job.output as any)?.finalPath || job.input.outputPath || ws.finalPath
     },
-    shots: shots.map((shot, i) => ({ index: i + 1, id: shot.id, durationSec: shot.durationSec, status: shot.status || "planned", promptFile: ws.shotPromptPath(i), outputPath: shot.assetPath || ws.shotPath(i) }))
+    shots: shots.map((shot, i) => ({ index: i + 1, id: shot.id, durationSec: shot.durationSec, status: shot.status || "planned", continuityMode: shot.continuityMode ?? "strict", startFrameRequired: shot.startFrameRequired === true, startFramePath: shot.startFramePath, endFramePath: shot.endFramePath || ws.shotEndFramePath(i), actionHandoff: shot.actionHandoff, cameraLock: shot.cameraLock, transition: shot.transition, promptFile: ws.shotPromptPath(i), outputPath: shot.assetPath || ws.shotPath(i) }))
   });
 }
 

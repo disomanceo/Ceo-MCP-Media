@@ -15,6 +15,7 @@ export interface ExternalActionInput {
   url?: string;
   prompt?: string;
   references?: string[];
+  firstFrame?: string;
   expectedOutputPath: string;
   clips?: string[];
   subtitleFile?: string;

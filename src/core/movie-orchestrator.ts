@@ -1,3 +1,4 @@
+import { copyFile } from "node:fs/promises";
 import type { MediaJob, MediaProject, MovieCreateInput, ProviderKind } from "../types.js";
 import { JobStore } from "./job-store.js";
 import { ProjectService } from "./project-service.js";
@@ -6,6 +7,7 @@ import { nowIso } from "./utils.js";
 import { isGuardrailError, preflightPrompt } from "./preflight.js";
 import { ExternalActionService } from "./external-actions.js";
 import { movieWorkspace, prepareMovieWorkspace, readMovieManifest, updateMovieManifest } from "./pipeline-workspace.js";
+import { buildContinuityPrompt, extractContinuityEndFrame } from "./continuity.js";
 
 const FLOW_URL = process.env.CEO_MEDIA_FLOW_URL || "https://flow.google.com/";
 const AI_STUDIO_URL = process.env.CEO_MEDIA_AI_STUDIO_URL || "https://aistudio.google.com/";
@@ -84,11 +86,12 @@ export class MovieOrchestrator {
       const url = provider === "flow-web" ? FLOW_URL : AI_STUDIO_URL;
       return this.external.create(job.projectId, {
         kind: "studio.video", provider, title: `Generate shot ${shotIndex + 1} for ${job.input.name}`, url, prompt,
-        references: referenceImages.slice(0, 3), expectedOutputPath: outputPath, projectName: job.input.name,
-        metadata: { shotIndex: shotIndex + 1, durationSec: Math.min(8, job.input.totalDurationSec || 8), aspectRatio: job.input.aspectRatio, resolution: job.input.resolution },
+        references: referenceImages.slice(0, 3), firstFrame, expectedOutputPath: outputPath, projectName: job.input.name,
+        metadata: { shotIndex: shotIndex + 1, durationSec: Math.min(8, job.input.totalDurationSec || 8), aspectRatio: job.input.aspectRatio, resolution: job.input.resolution, firstFrame, continuityMode: job.input.continuityMode ?? "strict" },
         instructions: [
           `Open ${provider === "flow-web" ? "Google Flow" : "Google AI Studio"} in the browser. If Google asks for sign-in, pause and let the user sign in manually; never request, store or type account credentials.`,
           "Upload/use the supplied continuity anchor and reference ingredients when the UI supports them.",
+          ...(firstFrame ? [`MANDATORY: use ${firstFrame} in the provider's Start Frame / first-frame slot. Do not treat it only as a style/reference image.`] : []),
           `Generate one ${job.input.aspectRatio || "16:9"} video shot, target duration up to 8 seconds, using the supplied shot prompt.`,
           "Prefer native sound/effects when available and do not burn text into the video; captions are composed later.",
           "Download the generated MP4 to the expected local path.",
@@ -96,7 +99,7 @@ export class MovieOrchestrator {
         ]
       }, `${job.id}:shot:${shotIndex + 1}:external:v2`);
     }
-    return this.jobs.create({ type: "video.generate", projectId: job.projectId, provider, idempotencyKey: `${job.id}:shot:${shotIndex + 1}:v3`, input: { prompt, outputPath, aspectRatio: job.input.aspectRatio ?? "16:9", resolution: job.input.resolution ?? "1080p", durationSec: 8, referenceImages: referenceImages.slice(0, 3), firstFrame, fastFlowMode: job.input.fastFlowMode ?? (provider === "flow-native"), usePersistentFlowSession: job.input.usePersistentFlowSession ?? (provider === "flow-native"), flowSessionKey: job.id, flowProjectKey: job.projectId } });
+    return this.jobs.create({ type: "video.generate", projectId: job.projectId, provider, idempotencyKey: `${job.id}:shot:${shotIndex + 1}:v12`, input: { prompt, outputPath, aspectRatio: job.input.aspectRatio ?? "16:9", resolution: job.input.resolution ?? "1080p", durationSec: 8, referenceImages: referenceImages.slice(0, 3), firstFrame, fastFlowMode: job.input.fastFlowMode ?? (provider === "flow-native"), usePersistentFlowSession: job.input.usePersistentFlowSession ?? (provider === "flow-native"), flowSessionKey: job.id, flowProjectKey: job.projectId } });
   }
 
   async advance(job: MediaJob<MovieCreateInput>): Promise<MediaJob<MovieCreateInput>> {
@@ -112,6 +115,8 @@ export class MovieOrchestrator {
     const character = project.characters[0];
     if (!character) throw new Error("movie project has no character lock");
     const ws = movieWorkspace(project);
+    const continuityEnabled = (input.continuityMode ?? "strict") !== "off";
+    const strictChain = continuityEnabled && project.storyboard.shots.length > 1;
 
     if (!await readMovieManifest(project)) await prepareMovieWorkspace(project, job.id, input, { imageProvider, videoProvider, finalEditor: input.finalEditor });
     state.workspaceRoot = ws.root;
@@ -174,7 +179,25 @@ export class MovieOrchestrator {
         const childId = state.shotJobIds![i];
         if (!childId) continue;
         const child = await this.jobs.get(childId);
-        if (child.status === "completed") { completed++; shots[i].assetPath = String((child.output as any)?.outputPath || ""); shots[i].status = "generated"; continue; }
+        if (child.status === "completed") {
+          completed++;
+          shots[i].assetPath = String((child.output as any)?.outputPath || "");
+          shots[i].status = "generated";
+          const shotAssetPath = shots[i].assetPath;
+          if (strictChain && shotAssetPath && !shots[i].endFramePath) {
+            const endFramePath = ws.shotEndFramePath(i);
+            if (videoProvider === "mock") {
+              const mockSource = shots[i].startFramePath || state.anchorPath || project.characters.flatMap((c) => c.referenceImages)[0];
+              if (!mockSource) throw new Error(`shot ${i + 1} completed without a continuity source for mock end-frame handoff`);
+              await copyFile(mockSource, endFramePath);
+            } else {
+              await extractContinuityEndFrame(shotAssetPath, endFramePath);
+            }
+            shots[i].endFramePath = endFramePath;
+            job.events.push({ at: nowIso(), level: "info", message: "movie.shot.handoff-frame.extracted", data: { shot: i + 1, outputPath: endFramePath } });
+          }
+          continue;
+        }
         if (["queued", "waiting", "running"].includes(child.status)) { active++; continue; }
         if (!isBrowserProvider(videoProvider) && child.status === "failed" && autoRewrite && isGuardrailError(child.error || "") && (state.rewrites![String(i)] || 0) < 1) {
           state.rewrites![String(i)] = 1;
@@ -194,14 +217,22 @@ export class MovieOrchestrator {
         state.phase = "audio";
         job.events.push({ at: nowIso(), level: "info", message: "movie.shots.completed", data: { shots: shots.length, subtitlePath: state.subtitlePath } });
       } else {
-        const concurrency = (isBrowserProvider(videoProvider) || videoProvider === "flow-native") ? 1 : Math.max(1, Math.min(4, Number(input.videoConcurrency || process.env.CEO_MEDIA_MOVIE_VIDEO_CONCURRENCY || 4)));
+        const concurrency = strictChain ? 1 : ((isBrowserProvider(videoProvider) || videoProvider === "flow-native") ? 1 : Math.max(1, Math.min(4, Number(input.videoConcurrency || process.env.CEO_MEDIA_MOVIE_VIDEO_CONCURRENCY || 4))));
         for (let i = 0; i < shots.length && active < concurrency; i++) {
           if (state.shotJobIds![i]) continue;
-          const checked = preflightPrompt(input.shotPrompts?.[i] || shots[i].prompt, autoRewrite);
+          if (strictChain && i > 0 && !shots[i - 1].endFramePath) break;
+          const basePrompt = input.shotPrompts?.[i] || shots[i].prompt;
+          const previousShot = i > 0 ? shots[i - 1] : undefined;
+          const continuityPrompt = continuityEnabled ? buildContinuityPrompt(basePrompt, shots[i], previousShot) : basePrompt;
+          const checked = preflightPrompt(continuityPrompt, autoRewrite);
           const references = uniquePaths([...(shots[i].referenceImages || []), state.anchorPath]).slice(0, 3);
-          const child = await this.createShotJob(job, videoProvider, i, checked.safePrompt, ws.shotPath(i), references, state.anchorPath);
+          const firstFrame = continuityEnabled ? (i === 0 ? state.anchorPath : previousShot?.endFramePath) : state.anchorPath;
+          shots[i].startFramePath = firstFrame || undefined;
+          shots[i].continuityMode = input.continuityMode ?? "strict";
+          shots[i].startFrameRequired = strictChain && i > 0;
+          const child = await this.createShotJob(job, videoProvider, i, checked.safePrompt, ws.shotPath(i), references, firstFrame);
           state.shotJobIds![i] = child.id; shots[i].status = "queued"; active++;
-          job.events.push({ at: nowIso(), level: "info", message: "movie.shot.created", data: { shot: i + 1, jobId: child.id, provider: videoProvider, preflightRisk: checked.risk } });
+          job.events.push({ at: nowIso(), level: "info", message: "movie.shot.created", data: { shot: i + 1, jobId: child.id, provider: videoProvider, preflightRisk: checked.risk, firstFrame, continuityMode: shots[i].continuityMode } });
         }
         await this.projects.save(project);
         return this.waiting(job, project, state);

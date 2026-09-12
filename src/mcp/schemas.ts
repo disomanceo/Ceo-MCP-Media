@@ -8,6 +8,7 @@ const resolution: Schema = { type: "string", enum: ["720p", "1080p", "4k"] };
 const provider: Schema = { type: "string", enum: ["auto", "mock", "gemini", "flow-native", "flow-web", "ai-studio-web", "flow"] };
 const apiProvider: Schema = { type: "string", enum: ["mock", "gemini"] };
 const editor: Schema = { type: "string", enum: ["auto", "ffmpeg", "capcut"] };
+const continuityMode: Schema = { type: "string", enum: ["strict", "off"], description: "Temporal multi-shot continuity. strict (default) chains each previous end frame into the next Start Frame and forces serial shot generation." };
 const obj = (properties: Record<string, Schema>, required: string[] = []): Schema => ({ type: "object", additionalProperties: false, properties, ...(required.length ? { required } : {}) });
 
 const schemas: Record<string, Schema> = {
@@ -18,7 +19,7 @@ const schemas: Record<string, Schema> = {
     anchorPrompt: str(), shotPrompts: arr(str()), dialogues: arr(str()), outputPath: str(), subtitlePath: str(), compose: bool(), finalEditor: editor,
     generateVoice: bool(), voiceProvider: apiProvider, voiceLanguage: str(), voiceSpeed: num(), voiceStyle: str(),
     generateMusic: bool(), musicProvider: apiProvider, musicPrompt: str(), musicMood: str(),
-    autoRewriteGuardrails: bool(), videoConcurrency: num("1-4 for API/local/native providers; Flow browser/native FAST mode remains serial"), fastFlowMode: bool("Reuse one Flow project/session, settings and uploaded reference assets across movie shots; defaults true for flow-native"), usePersistentFlowSession: bool("Keep using the dedicated Ceo Flow browser session/project between shots; defaults true for flow-native"), idempotencyKey: str(), timeoutMs: num()
+    autoRewriteGuardrails: bool(), continuityMode, videoConcurrency: num("1-4 when continuityMode=off; strict continuity always runs shots serially"), fastFlowMode: bool("Reuse one Flow project/session, settings and uploaded reference assets across movie shots; defaults true for flow-native"), usePersistentFlowSession: bool("Keep using the dedicated Ceo Flow browser session/project between shots; defaults true for flow-native"), idempotencyKey: str(), timeoutMs: num()
   }, ["name", "brief", "character"]),
   "media.movie.status": obj({ jobId: str() }, ["jobId"]),
   "media.movie.manifest": obj({ jobId: str() }, ["jobId"]),

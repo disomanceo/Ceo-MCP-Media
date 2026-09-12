@@ -14,6 +14,7 @@ Standalone durable media-production MCP for ChatGPT/Ceo3. It is deliberately sep
 - **V9** Production Workspace: script/scene files, seeded user reference images, persistent `manifest.json`, compact progress/status, optional durable voice/music stage, and deterministic CapCut/FFmpeg export folders.
 - **V10** Production hardening: optional Flow Native executable provider, content-addressed Asset Registry, strong idempotency conflict detection, bounded 4-worker execution, pinned `ffmpeg-skill` 0.15.3 adapter, loudness/delivery checks and contact-sheet verification with legacy FFmpeg fallback when the skill is unavailable.
 - **V11** Ceo Flow Browser: bundled Playwright/Chrome driver controls Google Flow directly with a dedicated local browser profile, persistent operation state, duplicate-submit protection, polling/download, reference-image upload and manual-only Google sign-in. No `useapi.net` dependency is required.
+- **V12** Temporal Continuity Chain: multi-shot movies default to `continuityMode=strict`; shots run serially, each completed shot is sampled near its final frame, and that end frame becomes the next shot's real Start Frame. Director prompts also lock action momentum, pose logic, screen direction, camera language, lighting and environment.
 
 ## One-call production workflow
 
@@ -79,6 +80,8 @@ Each movie gets its own stable workspace under the media data directory:
 - AUTO video routing is `authenticated local Flow Native driver -> Gemini API fallback -> Flow Web external action`; image/anchor work still prefers Gemini or AI Studio Web because the bundled V11 Flow driver currently exposes video generation only.
 
 ## Reference images / character continuity
+
+V12 makes temporal continuity a mandatory default for multi-shot movies. With `continuityMode="strict"` (default), Shot N+1 is not submitted until Shot N is complete and its end-frame handoff image exists. The previous end frame is supplied through the provider's real Start Frame / first-frame input, while the prompt separately locks pose, action momentum, camera/screen direction, lighting and environment. Set `continuityMode="off"` only when shots are intentionally independent.
 
 `media.movie.create.character.referenceImages` accepts up to three local seed images. These are used while creating the continuity anchor, then the generated anchor plus seed references are reused across later shots. This is intended for workflows where the user supplies their own character/person reference images.
 

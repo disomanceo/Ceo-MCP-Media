@@ -98,6 +98,7 @@ export class MediaToolService {
         const preference = args.provider ?? "auto";
         const videoRoute = await this.studio.resolve("video", preference);
         if (!videoRoute.ready) throw new Error(`No ready video route: ${videoRoute.reason}`);
+        const continuityMode = args.continuityMode ?? "strict";
         const fastFlowMode = args.fastFlowMode ?? (videoRoute.provider === "flow-native");
         const flowMovieUsesCurrentProject = videoRoute.provider === "flow-native" && fastFlowMode;
         const imageRoute = flowMovieUsesCurrentProject
@@ -121,6 +122,8 @@ export class MediaToolService {
         for (let i = 0; i < storyboard.shots.length; i++) {
           if (args.shotPrompts?.[i]) storyboard.shots[i].prompt = preflightPrompt(args.shotPrompts[i], args.autoRewriteGuardrails !== false).safePrompt;
           if (args.dialogues?.[i]) storyboard.shots[i].dialogue = args.dialogues[i];
+          storyboard.shots[i].continuityMode = continuityMode;
+          storyboard.shots[i].startFrameRequired = continuityMode === "strict" && i > 0;
         }
         await this.projects.setStoryboard(project.id, storyboard);
         const browserMode = imageRoute.mode === "browser" || videoRoute.mode === "browser";
@@ -135,7 +138,7 @@ export class MediaToolService {
             provider: preference, resolvedImageProvider: imageRoute.provider, resolvedVideoProvider: videoRoute.provider,
             character: { ...args.character, referenceImages: (args.character.referenceImages ?? []).slice(0, 3) }, anchorPrompt: args.anchorPrompt, shotPrompts: args.shotPrompts, dialogues: args.dialogues,
             outputPath: args.outputPath, subtitlePath: args.subtitlePath, compose: args.compose !== false, finalEditor,
-            autoRewriteGuardrails: args.autoRewriteGuardrails !== false, videoConcurrency: videoRoute.provider === "flow-native" ? 1 : (args.videoConcurrency ?? 4),
+            autoRewriteGuardrails: args.autoRewriteGuardrails !== false, continuityMode, videoConcurrency: continuityMode === "strict" ? 1 : (videoRoute.provider === "flow-native" ? 1 : (args.videoConcurrency ?? 4)),
             fastFlowMode, usePersistentFlowSession,
             generateVoice: args.generateVoice === true, voiceProvider: args.voiceProvider, voiceLanguage: args.voiceLanguage, voiceSpeed: args.voiceSpeed, voiceStyle: args.voiceStyle,
             generateMusic: args.generateMusic === true, musicProvider: args.musicProvider, musicPrompt: args.musicPrompt, musicMood: args.musicMood,
@@ -249,9 +252,9 @@ export class MediaToolService {
         await writeJsonAtomic(outputPath, handoff); return { outputPath, handoff };
       }
       case "media.capabilities": return {
-        versions: ["v1","v2","v3","v4","v5","v6","v7","v8","v9","v10","v11"], durable: true, autoMoviePipeline: true, autoWorker: process.env.CEO_MEDIA_AUTO_WORKER !== "false",
+        versions: ["v1","v2","v3","v4","v5","v6","v7","v8","v9","v10","v11","v12"], durable: true, autoMoviePipeline: true, autoWorker: process.env.CEO_MEDIA_AUTO_WORKER !== "false",
         studioRouter: true, nativeProviders: ["flow-native"], browserProviders: ["flow-web","ai-studio-web"], browserExternalActions: true, localFlowBrowserDriver: true, capcutBridge: true,
-        productionWorkspace: true, persistentManifest: true, seededReferenceImages: true, audioStage: true, assetRegistry: true,
+        productionWorkspace: true, persistentManifest: true, seededReferenceImages: true, temporalContinuityChain: true, endFrameStartFrameChaining: true, continuityModeDefault: "strict", serialContinuityShots: true, audioStage: true, assetRegistry: true,
         ffmpegSkill: ffmpegSkillStatus(), maxWorkerConcurrency: 4, strongIdempotency: true,
         providerAgnostic: true, flowOptional: true, guardrailPreflight: true, staleRunningRecovery: true, maxReferenceImages: 3, maxShotSec: 8, audioJobs: ["voice","music"], tools: TOOL_NAMES
       };

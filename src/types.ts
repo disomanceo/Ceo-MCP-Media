@@ -4,9 +4,30 @@ export type JobStatus = "queued" | "running" | "waiting" | "completed" | "failed
 export type ProviderKind = "mock" | "gemini" | "flow-native" | "flow-web" | "ai-studio-web";
 export type ProviderPreference = "auto" | ProviderKind | "flow";
 export type FinalEditor = "auto" | "ffmpeg" | "capcut";
+export type ContinuityMode = "strict" | "off";
 
 export interface CharacterBible { id: string; name: string; description: string; wardrobe?: string; voice?: string; referenceImages: string[]; continuityTags: string[]; }
-export interface Shot { id: string; index: number; durationSec: number; title: string; prompt: string; dialogue?: string; camera?: string; characters: string[]; referenceImages: string[]; continuityTags: string[]; status?: "planned" | "queued" | "generated" | "rejected" | "approved"; assetPath?: string; }
+export interface Shot {
+  id: string;
+  index: number;
+  durationSec: number;
+  title: string;
+  prompt: string;
+  dialogue?: string;
+  camera?: string;
+  characters: string[];
+  referenceImages: string[];
+  continuityTags: string[];
+  continuityMode?: ContinuityMode;
+  startFrameRequired?: boolean;
+  startFramePath?: string;
+  endFramePath?: string;
+  actionHandoff?: string;
+  cameraLock?: string;
+  transition?: "continuous" | "intentional-cut";
+  status?: "planned" | "queued" | "generated" | "rejected" | "approved";
+  assetPath?: string;
+}
 export interface Storyboard { id: string; projectId: string; title: string; totalDurationSec: number; aspectRatio: AspectRatio; shots: Shot[]; createdAt: string; }
 export interface MediaProject { id: string; name: string; brief: string; aspectRatio: AspectRatio; resolution: Resolution; fps: number; characters: CharacterBible[]; storyboard?: Storyboard; createdAt: string; updatedAt: string; }
 export interface JobEvent { at: string; level: "info" | "warn" | "error"; message: string; data?: Record<string, unknown>; }
@@ -49,6 +70,7 @@ export interface MovieCreateInput {
   finalEditor?: FinalEditor;
   autoRewriteGuardrails?: boolean;
   videoConcurrency?: number;
+  continuityMode?: ContinuityMode;
   fastFlowMode?: boolean;
   usePersistentFlowSession?: boolean;
   generateVoice?: boolean;

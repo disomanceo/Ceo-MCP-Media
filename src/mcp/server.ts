@@ -5,7 +5,7 @@ import { schemaFor } from "./schemas.js";
 type RpcRequest = { jsonrpc?: string; id?: string | number | null; method: string; params?: any };
 const service = new MediaToolService();
 const descriptions: Record<string, string> = {
-  "media.movie.create": "Create a durable V10 production workflow: script -> storyboard -> seeded anchor -> bounded parallel shots -> subtitles/audio -> FFmpeg Skill/CapCut -> verified export workspace/manifest.",
+  "media.movie.create": "Create a durable V12 production workflow: script -> storyboard -> seeded anchor -> mandatory temporal continuity chain (previous end-frame -> next Start Frame) -> subtitles/audio -> FFmpeg Skill/CapCut -> verified export workspace/manifest.",
   "media.movie.status": "Read durable movie status, compact progress, manifest path, outputs and the next pending browser/CapCut external action.",
   "media.movie.manifest": "Read the persistent production manifest for a movie job; use this instead of resending long scene payloads through chat.",
   "media.preflight.check": "Check a prompt for likely third-party/guardrail risk and optionally rewrite it before generation.",
@@ -37,11 +37,11 @@ const descriptions: Record<string, string> = {
   "media.flow.local_status": "Read the bundled Ceo Flow Browser driver readiness, Chrome path and dedicated-profile authentication state without generating media.",
   "media.flow.local_auth": "Open the dedicated Ceo Flow browser profile for manual Google sign-in, or verify that the signed-in session is ready. The media service never types passwords, OTPs or CAPTCHA answers.",
   "media.flow.prepare": "Attach to the visible Ceo Flow browser when available, reuse the best Flow project tab, configure settings/references and fill the prompt without clicking Generate or spending generation credits.",
-  "media.flow.handoff": "Prepare a portable Google Flow handoff package.", "media.capabilities": "Return V1-V11 capability manifest, including the local Flow Browser driver, Flow Native, Asset Registry, ffmpeg-skill and bounded parallel execution."
+  "media.flow.handoff": "Prepare a portable Google Flow handoff package.", "media.capabilities": "Return V1-V12 capability manifest, including mandatory temporal continuity chaining, the local Flow Browser driver, Flow Native, Asset Registry and ffmpeg-skill."
 };
 
 async function handle(req: RpcRequest) {
-  if (req.method === "initialize") return { protocolVersion: req.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "ceo-mcp-media", version: "1.5.1" } };
+  if (req.method === "initialize") return { protocolVersion: req.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "ceo-mcp-media", version: "1.6.0" } };
   if (req.method === "ping") return {};
   if (req.method === "tools/list") return { tools: TOOL_NAMES.map((name) => ({ name, description: descriptions[name], inputSchema: schemaFor(name) })) };
   if (req.method === "tools/call") { const result = await service.call(req.params?.name, req.params?.arguments ?? {}); return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], structuredContent: result }; }

@@ -37,4 +37,14 @@ test("movie.create orchestrates anchor, serial shots and subtitles durably", asy
   assert.ok(movie.output.anchorPath);
   assert.ok(movie.output.subtitlePath);
   await access(movie.output.subtitlePath);
+  const manifestResult: any = await service.call("media.movie.manifest", { jobId: created.movieJobId });
+  assert.equal(manifestResult.manifest.pipeline, "ceo-mcp-media-v12");
+  assert.equal(manifestResult.manifest.shots[1].startFramePath, manifestResult.manifest.shots[0].endFramePath);
+  await access(manifestResult.manifest.shots[0].endFramePath);
+  const jobs = await service.call("media.job.list") as any[];
+  const videoJobs = jobs.filter((item) => item.type === "video.generate" && item.projectId === created.projectId).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  assert.equal(videoJobs.length, 2);
+  assert.equal(videoJobs[1].input.firstFrame, manifestResult.manifest.shots[0].endFramePath);
+  assert.match(videoJobs[1].input.prompt, /MANDATORY TEMPORAL CONTINUITY/);
+  assert.match(videoJobs[1].input.prompt, /Start exactly from the supplied previous-shot end frame/);
 });

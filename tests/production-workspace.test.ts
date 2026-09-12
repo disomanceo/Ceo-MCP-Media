@@ -54,7 +54,8 @@ test("V10 movie workflow persists a production workspace, seeded references and 
   await access(status.output.subtitlePath);
 
   const manifestResult: any = await service.call("media.movie.manifest", { jobId: created.movieJobId });
-  assert.equal(manifestResult.manifest.pipeline, "ceo-mcp-media-v10");
+  assert.equal(manifestResult.manifest.pipeline, "ceo-mcp-media-v12");
+  assert.equal(manifestResult.manifest.shots[1].startFramePath, manifestResult.manifest.shots[0].endFramePath);
   assert.equal(manifestResult.manifest.progress.shotsCompleted, 2);
   assert.equal(manifestResult.manifest.progress.voiceReady, true);
   assert.equal(manifestResult.manifest.progress.musicReady, true);

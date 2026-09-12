@@ -60,6 +60,10 @@ Ceo MCP Media (stdio MCP)
       +-- FFmpeg Composer / ffprobe verification
 ```
 
+## V12 temporal-continuity invariant
+
+For multi-shot movies, continuity defaults to strict. The orchestrator does not submit Shot N+1 until Shot N completes and a near-final handoff frame has been extracted. That image is then passed through the provider's actual Start Frame / first-frame field. Character references remain identity/style anchors; they no longer substitute for temporal state. Strict mode also forces serial shot generation and injects action/camera continuity rules into each shot prompt.
+
 ## V9 production-workspace invariant
 
 A movie job owns one stable local workspace. Script text, anchor recipe, per-shot prompts, generated assets, SRT/audio, editor plan, export plan and final output all have deterministic locations. The root `manifest.json` is the compact handoff contract between ChatGPT/Ceo3, the browser recipe executor and final editor.
