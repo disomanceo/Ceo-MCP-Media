@@ -254,7 +254,7 @@ export class MediaToolService {
       case "media.capabilities": return {
         versions: ["v1","v2","v3","v4","v5","v6","v7","v8","v9","v10","v11","v12"], durable: true, autoMoviePipeline: true, autoWorker: process.env.CEO_MEDIA_AUTO_WORKER !== "false",
         studioRouter: true, nativeProviders: ["flow-native"], browserProviders: ["flow-web","ai-studio-web"], browserExternalActions: true, localFlowBrowserDriver: true, capcutBridge: true,
-        productionWorkspace: true, persistentManifest: true, seededReferenceImages: true, temporalContinuityChain: true, endFrameStartFrameChaining: true, continuityModeDefault: "strict", serialContinuityShots: true, audioStage: true, assetRegistry: true,
+        productionWorkspace: true, persistentManifest: true, seededReferenceImages: true, temporalContinuityChain: true, endFrameStartFrameChaining: true, continuityModeDefault: "strict", serialContinuityShots: true, flowContinuityUiGuard: true, startFrameFailClosed: true, promptRecommitAfterModeSwitch: true, audioStage: true, assetRegistry: true,
         ffmpegSkill: ffmpegSkillStatus(), maxWorkerConcurrency: 4, strongIdempotency: true,
         providerAgnostic: true, flowOptional: true, guardrailPreflight: true, staleRunningRecovery: true, maxReferenceImages: 3, maxShotSec: 8, audioJobs: ["voice","music"], tools: TOOL_NAMES
       };

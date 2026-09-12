@@ -64,6 +64,8 @@ Ceo MCP Media (stdio MCP)
 
 For multi-shot movies, continuity defaults to strict. The orchestrator does not submit Shot N+1 until Shot N completes and a near-final handoff frame has been extracted. That image is then passed through the provider's actual Start Frame / first-frame field. Character references remain identity/style anchors; they no longer substitute for temporal state. Strict mode also forces serial shot generation and injects action/camera continuity rules into each shot prompt.
 
+Flow V12.1 adds a provider-UI invariant: commit prompt text first (so current Flow variants render manual controls), force Agent mode off even when Fast Session settings are reused, confirm the Start Frame slot and selected handoff asset, then re-commit/verify the prompt after any composer re-render. Strict continuity fails closed if Start Frame confirmation is unavailable.
+
 ## V9 production-workspace invariant
 
 A movie job owns one stable local workspace. Script text, anchor recipe, per-shot prompts, generated assets, SRT/audio, editor plan, export plan and final output all have deterministic locations. The root `manifest.json` is the compact handoff contract between ChatGPT/Ceo3, the browser recipe executor and final editor.

@@ -421,22 +421,73 @@ async function linkRequest(requestDigest, operationId) {
   await writeJson(requestFile(requestDigest), { operationId, linkedAt: nowIso() });
 }
 
-async function choosePromptBox(page) {
-  const candidates = page.locator('textarea, [contenteditable="true"], [role="textbox"], input[type="text"]');
-  const count = await candidates.count();
+async function choosePromptBox(page, timeoutMs = 15_000) {
+  const deadline = Date.now() + Math.max(0, timeoutMs);
   let fallback = null;
-  for (let i = count - 1; i >= 0; i--) {
-    const item = candidates.nth(i);
-    if (!await item.isVisible().catch(() => false)) continue;
-    fallback ||= item;
-    const label = `${await item.getAttribute("placeholder").catch(() => "") || ""} ${await item.getAttribute("aria-label").catch(() => "") || ""}`.toLowerCase();
-    if (/prompt|describe|what.*create|พรอมต์|อธิบาย|อยากสร้าง|สร้างอะไร/.test(label)) return item;
+  do {
+    const proseMirror = page.locator('div.ProseMirror[contenteditable="true"], [contenteditable="true"].ProseMirror').last();
+    if (await proseMirror.isVisible().catch(() => false)) return proseMirror;
+
+    const candidates = page.locator('textarea, [contenteditable="true"], [role="textbox"], input[type="text"]');
+    const count = await candidates.count().catch(() => 0);
+    fallback = null;
+    for (let i = count - 1; i >= 0; i--) {
+      const item = candidates.nth(i);
+      if (!await item.isVisible().catch(() => false)) continue;
+      const tag = String(await item.evaluate((el) => el.tagName).catch(() => '')).toLowerCase();
+      const editable = await item.getAttribute("contenteditable").catch(() => null);
+      const role = await item.getAttribute("role").catch(() => null);
+      const label = `${await item.getAttribute("placeholder").catch(() => "") || ""} ${await item.getAttribute("aria-label").catch(() => "") || ""}`.toLowerCase();
+      if (/prompt|describe|what.*create|พรอมต์|อธิบาย|อยากสร้าง|สร้างอะไร/.test(label)) return item;
+      if (!fallback && (tag === "textarea" || editable === "true" || role === "textbox")) fallback = item;
+    }
+    if (fallback) return fallback;
+    if (Date.now() < deadline) await page.waitForTimeout(300);
+  } while (Date.now() < deadline);
+  return null;
+}
+
+async function dismissFlowObstructions(page) {
+  // Flow can leave onboarding, media pickers, or project-settings overlays above the composer.
+  // Strict continuity must normalize the UI before trying to locate the prompt or Start Frame slot.
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(120);
+  const gotIt = page.getByRole("button", { name: /รับทราบ.*ปิดข้อความเริ่มต้น|got it.*close|dismiss/i }).first();
+  if (await gotIt.isVisible().catch(() => false)) {
+    await gotIt.click().catch(() => {});
+    await page.waitForTimeout(180);
   }
-  return fallback;
+  const close = page.getByRole("button", { name: /^(?:ปิด|close)$/i }).last();
+  if (await close.isVisible().catch(() => false)) {
+    await close.click().catch(() => {});
+    await page.waitForTimeout(220);
+  }
+}
+
+async function ensureManualVideoMode(page) {
+  await dismissFlowObstructions(page);
+  const agent = page.getByRole("button", { name: /^Agent$/i }).first();
+  if (await agent.isVisible().catch(() => false) && await agent.getAttribute("aria-pressed") === "true") {
+    await agent.click();
+    await page.waitForTimeout(450);
+  }
+  let start = page.getByRole("button", { name: /^(?:เริ่ม|start)$/i }).first();
+  if (!await start.isVisible().catch(() => false)) {
+    start = page.locator("flow-base-prompt-box button").filter({ hasText: /^(?:เริ่ม|start)$/i }).first();
+  }
+  const settingsTrigger = page.locator('flow-base-prompt-box button[aria-label="ทริกเกอร์การตั้งค่า"], flow-base-prompt-box button[aria-label*="generation settings" i]').first();
+  return {
+    agentVisible: await agent.isVisible().catch(() => false),
+    agentOff: !await agent.isVisible().catch(() => false) || await agent.getAttribute("aria-pressed") !== "true",
+    startVisible: await start.isVisible().catch(() => false),
+    settingsTriggerVisible: await settingsTrigger.isVisible().catch(() => false),
+    settingsSummary: await settingsTrigger.innerText().catch(() => "")
+  };
 }
 
 async function ensureProjectPage(page, { forceNewProject = false } = {}) {
-  let promptBox = await choosePromptBox(page);
+  await dismissFlowObstructions(page);
+  let promptBox = await choosePromptBox(page, 15_000);
   if (promptBox && !forceNewProject) return promptBox;
 
   if (forceNewProject && isFlowProjectUrl(page.url())) {
@@ -455,7 +506,7 @@ async function ensureProjectPage(page, { forceNewProject = false } = {}) {
     await create.click();
     await page.waitForURL(/flow\.google\.com\/(?:u\/\d+\/)?project\//i, { timeout: 20_000 }).catch(() => {});
     await page.waitForTimeout(1800);
-    promptBox = await choosePromptBox(page);
+    promptBox = await choosePromptBox(page, 15_000);
   }
   return promptBox;
 }
@@ -565,35 +616,106 @@ async function uploadProjectReferences(page, references) {
 async function selectStartFrame(page, file) {
   if (!file) return { requested: false, confirmed: false };
   await ensureProjectAssetUploaded(page, file);
-  const start = page.getByRole("button", { name: /^เริ่ม$|^start$/i }).first();
-  if (!await start.isVisible().catch(() => false)) throw new Error("[FLOW_UI_CHANGED] Start Frame slot was not found");
+  const manual = await ensureManualVideoMode(page);
+  let start = page.getByRole("button", { name: /^(?:เริ่ม|start)$/i }).first();
+  if (!await start.isVisible().catch(() => false)) {
+    start = page.locator("flow-base-prompt-box button").filter({ hasText: /^(?:เริ่ม|start)$/i }).first();
+  }
+  if (!await start.isVisible().catch(() => false)) {
+    throw new Error(`[START_FRAME_NOT_CONFIRMED] Start Frame slot is hidden after forcing Agent off; agentOff=${manual.agentOff} settingsVisible=${manual.settingsTriggerVisible}`);
+  }
   await start.click();
   await page.waitForTimeout(450);
   const escaped = String(path.basename(file)).replace(/[.*+?^${}()|[\]\\]/g, (ch) => `\\${ch}`);
+  const pattern = new RegExp(escaped, "i");
   const overlay = page.locator(".cdk-overlay-container");
-  const asset = overlay.getByRole("option", { name: new RegExp(escaped, "i") }).first();
+  let asset = overlay.getByRole("option", { name: pattern }).first();
+  if (!await asset.isVisible().catch(() => false)) asset = page.getByRole("option").filter({ hasText: pattern }).first();
   await asset.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
   if (!await asset.isVisible().catch(() => false)) throw new Error(`[FLOW_UI_CHANGED] Uploaded Start Frame asset was not selectable: ${path.basename(file)}`);
   if (await asset.getAttribute("aria-selected") !== "true") await asset.click();
-  const add = overlay.locator("button").filter({ hasText: /เพิ่มไปยังพรอมต์|add to prompt/i }).last();
+  let add = overlay.locator("button").filter({ hasText: /เพิ่มไปยังพรอมต์|add to prompt/i }).last();
+  if (!await add.isVisible().catch(() => false)) add = page.locator("button").filter({ hasText: /เพิ่มไปยังพรอมต์|add to prompt/i }).last();
   await add.waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
   if (!await add.isVisible().catch(() => false) || !await add.isEnabled().catch(() => false)) throw new Error("[FLOW_UI_CHANGED] Add-to-prompt action for Start Frame was unavailable");
   await add.click();
-  await page.waitForTimeout(800);
-  return { requested: true, confirmed: true, file };
+  await page.waitForTimeout(900);
+
+  // Sep 2026 Flow UI may open the scene editor after attaching a Start Frame.
+  // Return to the project composer before looking for Generate; do not create or submit anything here.
+  let returnedFromEditor = false;
+  if (/\/edit\//i.test(page.url())) {
+    let done = page.getByRole("button", { name: /แก้ไขฉากเสร็จแล้ว|เสร็จสิ้น|done/i }).first();
+    if (!await done.isVisible().catch(() => false)) done = page.locator('button').filter({ hasText: /เสร็จสิ้น|done/i }).first();
+    if (!await done.isVisible().catch(() => false)) throw new Error("[FLOW_UI_CHANGED] Flow opened the scene editor after Start Frame selection but no Done action was available");
+    await done.click();
+    await page.waitForURL(/flow\.google\.com\/(?:u\/\d+\/)?project\/[^/]+(?:$|\?)/i, { timeout: 20_000 }).catch(() => {});
+    await page.waitForTimeout(900);
+    returnedFromEditor = !/\/edit\//i.test(page.url());
+    if (!returnedFromEditor) throw new Error("[FLOW_UI_CHANGED] Could not return from Flow scene editor to the project composer after Start Frame selection");
+  }
+
+  // Fail closed: after selection the Start slot should no longer be an empty plain-text Start button.
+  // If the new UI does not expose the slot after returning from editor, trust the completed attach action
+  // only when we positively returned from that editor flow.
+  const emptyStart = page.getByRole("button", { name: /^(?:เริ่ม|start)$/i }).first();
+  const emptyStillVisible = await emptyStart.isVisible().catch(() => false);
+  const confirmed = returnedFromEditor ? true : !emptyStillVisible;
+  return { requested: true, confirmed, file, agentOff: manual.agentOff, emptySlotVisible: emptyStillVisible, returnedFromEditor };
 }
 
 async function configureVideoSettings(page, request) {
   const warnings = [];
-  const agent = page.getByRole("button", { name: /^Agent$/i }).first();
-  if (await agent.isVisible().catch(() => false) && await agent.getAttribute("aria-pressed") === "true") {
-    await agent.click();
-    await page.waitForTimeout(400);
-  }
+  await ensureManualVideoMode(page);
 
-  const trigger = page.locator('button[aria-label="\u0e17\u0e23\u0e34\u0e01\u0e40\u0e01\u0e2d\u0e23\u0e4c\u0e01\u0e32\u0e23\u0e15\u0e31\u0e49\u0e07\u0e04\u0e48\u0e32"], button[aria-label*="generation settings" i]').first();
+  const trigger = page.locator('flow-base-prompt-box button[aria-label="\u0e17\u0e23\u0e34\u0e01\u0e40\u0e01\u0e2d\u0e23\u0e4c\u0e01\u0e32\u0e23\u0e15\u0e31\u0e49\u0e07\u0e04\u0e48\u0e32"], flow-base-prompt-box button[aria-label*="generation settings" i]').first();
   if (!await trigger.isVisible().catch(() => false)) {
-    return { confirmed: false, aspectConfirmed: false, warnings: ["Flow manual generation settings are unavailable; current defaults will be used."] };
+    // New Flow Agent UI (Sep 2026): generation defaults live in the Agent settings panel.
+    const settingsButton = page.getByRole("button", { name: /\u0e01\u0e32\u0e23\u0e15\u0e31\u0e49\u0e07\u0e04\u0e48\u0e32|settings/i }).last();
+    if (await settingsButton.isVisible().catch(() => false)) {
+      await settingsButton.click();
+      await page.waitForTimeout(350);
+      const settingsView = page.locator("flow-settings-view").last();
+      if (await settingsView.isVisible().catch(() => false)) {
+        const videoSection = settingsView.locator(".settings-section").filter({ hasText: /\u0e04\u0e48\u0e32\u0e40\u0e23\u0e34\u0e48\u0e21\u0e15\u0e49\u0e19\u0e02\u0e2d\u0e07\u0e01\u0e32\u0e23\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e27\u0e34\u0e14\u0e35\u0e42\u0e2d|video/i }).last();
+        let aspectConfirmed = false;
+        if (request.aspectRatio && await videoSection.isVisible().catch(() => false)) {
+          const aspect = videoSection.getByRole("radio", { name: new RegExp(String(request.aspectRatio).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) }).first();
+          if (await aspect.isVisible().catch(() => false)) {
+            if (await aspect.getAttribute("aria-checked") !== "true") await aspect.click();
+            aspectConfirmed = true;
+          }
+        }
+        const x1 = videoSection.getByRole("radio", { name: /^x1$/i }).first();
+        let countConfirmed = false;
+        if (await x1.isVisible().catch(() => false)) {
+          if (await x1.getAttribute("aria-checked") !== "true") await x1.click();
+          countConfirmed = true;
+        }
+        const modelButton = videoSection.getByRole("button", { name: /\u0e42\u0e21\u0e40\u0e14\u0e25.*\u0e27\u0e34\u0e14\u0e35\u0e42\u0e2d|video.*model/i }).first();
+        const selectedModel = (await modelButton.innerText().catch(() => "")).replace(/arrow_drop_down/gi, "").trim() || null;
+        const everyTime = settingsView.locator("mat-radio-button").filter({ hasText: /\u0e17\u0e38\u0e01\u0e04\u0e23\u0e31\u0e49\u0e07|every time/i }).first();
+        if (await everyTime.isVisible().catch(() => false)) {
+          const input = everyTime.locator('input[type="radio"]');
+          if (!await input.isChecked().catch(() => false)) await everyTime.click();
+        }
+        const save = settingsView.getByRole("button", { name: /\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01|save/i }).last();
+        if (await save.isVisible().catch(() => false) && await save.isEnabled().catch(() => false)) {
+          await save.click();
+          await page.waitForTimeout(250);
+        }
+        const close = page.getByRole("button", { name: /\u0e1b\u0e34\u0e14|close/i }).last();
+        if (await close.isVisible().catch(() => false)) await close.click().catch(() => {});
+        const lite = /Veo\s*3\.1\s*-\s*Lite/i.test(String(selectedModel || ""));
+        const requestedResolution = String(request.resolution || "").toLowerCase();
+        const selectedResolution = requestedResolution === "720p" && lite ? "720p" : null;
+        const durationConfirmed = Number(request.durationSec || 0) === 8 && lite;
+        if (request.resolution && !selectedResolution) warnings.push(`Resolution ${request.resolution} is not explicitly exposed in the current Agent settings UI.`);
+        if (request.durationSec && !durationConfirmed) warnings.push(`Duration ${request.durationSec}s is not explicitly exposed in the current Agent settings UI.`);
+        return { confirmed: true, framesConfirmed: true, aspectConfirmed, selectedResolution, durationConfirmed, countConfirmed, selectedModel, warnings };
+      }
+    }
+    return { confirmed: false, framesConfirmed: false, aspectConfirmed: false, selectedResolution: null, durationConfirmed: false, countConfirmed: false, selectedModel: null, warnings: ["Flow generation settings are unavailable in the current UI."] };
   }
   await trigger.click();
   await page.waitForTimeout(350);
@@ -719,12 +841,21 @@ async function prepareVideoPage(page, request) {
   const promptBox = await ensureProjectPage(page, { forceNewProject: shouldCreateProject });
   if (!promptBox) throw new Error("[FLOW_UI_CHANGED] Could not locate the Google Flow prompt editor after opening a project");
 
+  // Current Flow variants render the Agent toggle only after the composer contains text.
+  // Commit the prompt first, then force Agent off so Start/End Frame controls can render.
+  const expectedPrompt = String(request.prompt || "");
+  await promptBox.fill(expectedPrompt);
+  await page.waitForTimeout(500);
+
   const projectUrl = page.url();
   if (isFlowProjectUrl(projectUrl)) await pinFlowProject(projectUrl, { source: "prepare" });
+  // Fast-session reuse must never reuse the UI mode itself. Agent mode hides Start/End Frame slots.
+  // Force manual Frames-capable composer mode on every shot, even when generation settings are reused.
+  const manualMode = await ensureManualVideoMode(page);
   const settingsDigest = hash({ aspectRatio: request.aspectRatio || null, resolution: request.resolution || null, durationSec: request.durationSec || null, model: process.env.CEO_MEDIA_FLOW_VIDEO_MODEL || "" });
   let settings;
-  if (fastFlowMode && fastSession?.projectUrl === projectUrl && fastSession?.settingsDigest === settingsDigest) {
-    settings = { confirmed: true, framesConfirmed: true, aspectConfirmed: Boolean(request.aspectRatio), selectedResolution: request.resolution || null, durationConfirmed: Boolean(request.durationSec), countConfirmed: true, selectedModel: fastSession.selectedModel || null, warnings: [], reused: true };
+  if (fastFlowMode && fastSession?.projectUrl === projectUrl && fastSession?.settingsDigest === settingsDigest && manualMode.settingsTriggerVisible) {
+    settings = { confirmed: true, framesConfirmed: manualMode.startVisible || !request.firstFrame, aspectConfirmed: Boolean(request.aspectRatio), selectedResolution: request.resolution || null, durationConfirmed: Boolean(request.durationSec), countConfirmed: true, selectedModel: fastSession.selectedModel || null, warnings: [], reused: true, manualMode };
   } else {
     settings = await configureVideoSettings(page, request);
     if (fastFlowMode) {
@@ -737,11 +868,24 @@ async function prepareVideoPage(page, request) {
   const references = await uploadProjectReferences(page, libraryFiles);
   if (references.requested > 0 && (!references.complete || references.uploaded !== references.requested)) throw new Error("[UPLOAD_INCOMPLETE] Reference upload did not complete at 100%");
   const firstFrame = await selectStartFrame(page, request.firstFrame);
-  const expectedPrompt = String(request.prompt || "");
-  await promptBox.fill(expectedPrompt);
+  const committedPromptBox = await choosePromptBox(page, 5_000);
+  if (!committedPromptBox) throw new Error("[PROMPT_NOT_COMMITTED] Flow prompt editor disappeared after switching to manual Frames mode");
+  await committedPromptBox.fill(expectedPrompt);
   await page.waitForTimeout(350);
-  const actualPrompt = await promptBox.innerText().catch(async () => promptBox.inputValue().catch(() => ""));
-  if (expectedPrompt && (!actualPrompt || !String(actualPrompt).includes(expectedPrompt.slice(0, Math.min(120, expectedPrompt.length))))) {
+  let actualPrompt = "";
+  const expectedPrefix = expectedPrompt.slice(0, Math.min(120, expectedPrompt.length));
+  const commitDeadline = Date.now() + 4000;
+  while (Date.now() < commitDeadline) {
+    const liveBox = await choosePromptBox(page, 0);
+    if (liveBox) {
+      actualPrompt = await liveBox.innerText().catch(async () =>
+        liveBox.textContent().catch(async () => liveBox.inputValue().catch(() => ""))
+      );
+    }
+    if (!expectedPrompt || (actualPrompt && String(actualPrompt).includes(expectedPrefix))) break;
+    await page.waitForTimeout(250);
+  }
+  if (expectedPrompt && (!actualPrompt || !String(actualPrompt).includes(expectedPrefix))) {
     throw new Error("[PROMPT_NOT_COMMITTED] Flow prompt editor did not retain the requested prompt before submission");
   }
   const strict = String(process.env.CEO_MEDIA_FLOW_STRICT_SETTINGS || "false").toLowerCase() === "true";

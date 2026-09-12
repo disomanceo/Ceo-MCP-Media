@@ -19,6 +19,8 @@ test("V12 continuity prompt explicitly forbids action reset and requires previou
   const prompt = buildContinuityPrompt("Continue running toward the door.", board.shots[1], board.shots[0]);
   assert.match(prompt, /MANDATORY TEMPORAL CONTINUITY/);
   assert.match(prompt, /Start exactly from the supplied previous-shot end frame/);
+  assert.match(prompt, /first 1\.0 second/);
+  assert.match(prompt, /final ~0\.75 seconds/);
   assert.match(prompt, /Do not return the character to a neutral pose/);
   const review = reviewShot(board.shots[1], board.shots[0], 70);
   assert.equal(review.accepted, true);

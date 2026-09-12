@@ -74,6 +74,15 @@ Implemented:
 - Production manifests persist `startFramePath`, `endFramePath`, `actionHandoff`, `cameraLock`, transition and continuity mode for deterministic recovery/QA.
 - `continuityMode=off` remains available for intentionally independent shots.
 
+## V12.1 - Flow continuity UI hardening
+Implemented:
+- Normalize/dismiss Flow overlays before composer discovery.
+- Commit prompt before toggling Agent because some account/UI variants render the Agent chip only after prompt content exists.
+- Force Agent off on every shot, including Fast Session reuse, so Start/End Frame controls remain available.
+- Fail closed unless the real Start Frame selection is confirmed before generation.
+- Re-commit and verify prompt text after mode/asset changes re-render the composer.
+- Live no-credit smoke validation confirmed `firstFrame.confirmed=true`, Agent off, 9:16, 720p, 8 seconds and x1 on current Flow UI.
+
 ## Production hardening next
 ### P1
 - Browser recipe adapters with semantic state verification for current Flow/AI Studio UI, including login-required/quota-required/completed states.

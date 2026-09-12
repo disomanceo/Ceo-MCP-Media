@@ -13,7 +13,7 @@ export const TEMPORAL_CONTINUITY_RULE = [
 
 export function buildContinuityPrompt(basePrompt: string, shot: Shot, previous?: Shot): string {
   const startRule = previous
-    ? "Start exactly from the supplied previous-shot end frame. Treat it as the physical first frame of this shot, not merely as a visual reference."
+    ? "Start exactly from the supplied previous-shot end frame. Treat it as the physical first frame of this shot, not merely as a visual reference. For roughly the first 1.0 second, preserve the same composition, environment, camera axis, subject scale, screen direction and motion trajectory while visibly continuing the prior action; introduce the new story beat only after that continuation is established."
     : "When a continuity anchor/start frame is supplied, begin from that exact frame state rather than inventing a new pose.";
   const previousHandoff = previous?.actionHandoff?.trim()
     ? `Previous-shot action handoff: ${previous.actionHandoff.trim()}`
@@ -22,7 +22,7 @@ export function buildContinuityPrompt(basePrompt: string, shot: Shot, previous?:
   const camera = shot.cameraLock?.trim() ? `Camera continuity lock: ${shot.cameraLock.trim()}` : "";
   const transition = shot.transition === "intentional-cut"
     ? "Transition: an intentional cut is allowed only where described in this shot."
-    : "Transition: continuous temporal/spatial action; no unexplained jump cut, teleport, pose reset or camera reversal.";
+    : "Transition: continuous temporal/spatial action; no unexplained jump cut, teleport, pose reset or camera reversal. Keep the final ~0.75 seconds of the current shot readable and stable enough for the next-shot handoff: no fade-out, scene cut, full occlusion or last-moment camera reversal.";
   return [basePrompt.trim(), "", TEMPORAL_CONTINUITY_RULE, startRule, previousHandoff, camera, transition, currentHandoff]
     .filter(Boolean)
     .join("\n");
@@ -39,8 +39,8 @@ async function run(executable: string, args: string[]): Promise<void> {
 }
 
 export async function extractContinuityEndFrame(videoPath: string, outputPath: string): Promise<string> {
-  const configured = Number(process.env.CEO_MEDIA_CONTINUITY_TAIL_OFFSET_SEC || 0.12);
-  const tailOffsetSec = Number.isFinite(configured) ? Math.max(0.04, Math.min(0.75, configured)) : 0.12;
+  const configured = Number(process.env.CEO_MEDIA_CONTINUITY_TAIL_OFFSET_SEC || 0.35);
+  const tailOffsetSec = Number.isFinite(configured) ? Math.max(0.04, Math.min(0.75, configured)) : 0.35;
   await ensureDir(path.dirname(outputPath));
   await run(resolveFfmpeg(), [
     "-y",

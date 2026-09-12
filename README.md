@@ -15,6 +15,7 @@ Standalone durable media-production MCP for ChatGPT/Ceo3. It is deliberately sep
 - **V10** Production hardening: optional Flow Native executable provider, content-addressed Asset Registry, strong idempotency conflict detection, bounded 4-worker execution, pinned `ffmpeg-skill` 0.15.3 adapter, loudness/delivery checks and contact-sheet verification with legacy FFmpeg fallback when the skill is unavailable.
 - **V11** Ceo Flow Browser: bundled Playwright/Chrome driver controls Google Flow directly with a dedicated local browser profile, persistent operation state, duplicate-submit protection, polling/download, reference-image upload and manual-only Google sign-in. No `useapi.net` dependency is required.
 - **V12** Temporal Continuity Chain: multi-shot movies default to `continuityMode=strict`; shots run serially, each completed shot is sampled near its final frame, and that end frame becomes the next shot's real Start Frame. Director prompts also lock action momentum, pose logic, screen direction, camera language, lighting and environment.
+- **V12.1** Flow continuity hardening: the browser/native driver now commits the prompt first, forces Agent mode off on every shot (including Fast Session reuse), confirms the real Start Frame slot and selected handoff asset before submission, and re-commits the prompt after Flow re-renders the composer.
 
 ## One-call production workflow
 

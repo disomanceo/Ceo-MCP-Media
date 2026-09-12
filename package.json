@@ -1,6 +1,6 @@
 {
   "name": "ceo-mcp-media",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "private": true,
   "description": "Durable provider-agnostic MCP media pipeline with API, browser studio and CapCut/FFmpeg routing.",
   "type": "module",
