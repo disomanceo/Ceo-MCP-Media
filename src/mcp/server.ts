@@ -33,11 +33,14 @@ const descriptions: Record<string, string> = {
   "media.audio.voice": "Submit a durable voice/TTS generation job.", "media.audio.music": "Submit a durable music generation job.",
   "media.compose": "Submit an FFmpeg composition/render job with subtitle, voice and optional background music inputs.", "media.subtitle.generate": "Generate an SRT sidecar from storyboard dialogue.", "media.director.review": "Run deterministic continuity/shot QA.",
   "media.job.status": "Read durable job status.", "media.job.list": "List durable jobs.", "media.job.run_once": "Advance one durable job by one non-blocking step.", "media.job.tick": "Advance due jobs by one step each.", "media.job.cancel": "Cancel a durable job.",
-  "media.provider.status": "Read executable provider and Studio Router readiness without generating media.", "media.flow.handoff": "Prepare a portable Google Flow handoff package.", "media.capabilities": "Return V1-V10 capability manifest, including Flow Native, Asset Registry, ffmpeg-skill and bounded parallel execution."
+  "media.provider.status": "Read executable provider and Studio Router readiness without generating media.",
+  "media.flow.local_status": "Read the bundled Ceo Flow Browser driver readiness, Chrome path and dedicated-profile authentication state without generating media.",
+  "media.flow.local_auth": "Open the dedicated Ceo Flow browser profile for manual Google sign-in, or verify that the signed-in session is ready. The media service never types passwords, OTPs or CAPTCHA answers.",
+  "media.flow.handoff": "Prepare a portable Google Flow handoff package.", "media.capabilities": "Return V1-V11 capability manifest, including the local Flow Browser driver, Flow Native, Asset Registry, ffmpeg-skill and bounded parallel execution."
 };
 
 async function handle(req: RpcRequest) {
-  if (req.method === "initialize") return { protocolVersion: req.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "ceo-mcp-media", version: "1.4.0" } };
+  if (req.method === "initialize") return { protocolVersion: req.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "ceo-mcp-media", version: "1.5.0" } };
   if (req.method === "ping") return {};
   if (req.method === "tools/list") return { tools: TOOL_NAMES.map((name) => ({ name, description: descriptions[name], inputSchema: schemaFor(name) })) };
   if (req.method === "tools/call") { const result = await service.call(req.params?.name, req.params?.arguments ?? {}); return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], structuredContent: result }; }

@@ -10,3 +10,4 @@ data/renders/*
 !data/assets/.gitkeep
 !data/renders/.gitkeep
 *.log
+output/

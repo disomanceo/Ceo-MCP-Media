@@ -1,17 +1,17 @@
 # Security
 
 - API credentials come from environment variables only; `.env` is ignored.
-- V10 does not require a Gemini API credential. AUTO may use a configured Flow Native executable before browser fallback; Flow/AI Studio Web sign-in remains user-controlled.
+- V11 does not require a Gemini API credential or `useapi.net`. AUTO may use the bundled local Ceo Flow Browser driver before browser fallback; Flow/AI Studio Web sign-in remains user-controlled.
 - Flow Native execution accepts only a configured executable plus a JSON array of prefix arguments and structured JSON stdin/stdout. The MCP surface does not accept arbitrary shell command strings.
 - `ffmpeg-skill` is installed from immutable commit `7dfbdc5b30a622dbb3c7029e690280b7ac43615e` whose `package.json` is 0.15.3. Version/commit mismatch fails closed; the installer never follows upstream `main`.
 - ffmpeg-skill adapter operations build argv arrays for doctor/contract/render/probe/check/look and never interpolate user input into a shell command string.
 - Asset Registry stores local file paths, SHA-256 hashes and bounded provenance only; it does not copy unrelated files or credentials.
-- Browser actions must never request, type, store or proxy Google passwords, OTPs, recovery codes or session secrets. If sign-in is required, pause for the user to sign in manually.
+- Browser actions must never request, type, store or proxy Google passwords, OTPs, recovery codes or CAPTCHA answers. V11 uses a dedicated local Chrome profile and requires the user to complete Google sign-in manually. Browser profile/session data stays on the local machine and is excluded from the repository.
 - External browser/editor actions persist only bounded workflow metadata: provider name, URL, prompts, reference file paths, semantic instructions and expected output path.
 - V9 production workspaces persist script/scene text, local asset paths, audio/editor/export plans and progress in `manifest.json`; they do not persist browser credentials or session secrets.
 - User-supplied reference-image paths are local file references only. The media pipeline should not copy unrelated user files into project workspaces.
 - An external action is completed only after the referenced local output file exists.
-- External actions are excluded from automatic due-job polling, preventing repeated browser submissions/credit consumption.
+- External actions are excluded from automatic due-job polling, preventing repeated browser submissions/credit consumption. The local V11 driver additionally writes `submitting` state immediately before the Generate click and treats uncertain submission as non-retryable to avoid duplicate credit spend.
 - Explicit API provider requests remain strict; unavailable Gemini does not silently return Mock artifacts.
 - Guardrail/non-retryable errors fail fast. 429 responses use bounded backoff and provider-wide cooldown.
 - Remote provider errors are bounded before logging.

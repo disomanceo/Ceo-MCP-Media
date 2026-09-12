@@ -26,7 +26,11 @@ test("video.generate schema describes durable generation inputs", () => {
   assert.equal(schema.properties.durationSec.type, "number");
 });
 
-test("V10 ffmpeg and asset schemas are typed", () => {
+test("V11 local Flow auth schemas and V10 ffmpeg/asset schemas are typed", () => {
+  const flowAuth: any = schemaFor("media.flow.local_auth");
+  assert.deepEqual(flowAuth.properties.action.enum, ["open", "check"]);
+  const flowStatus: any = schemaFor("media.flow.local_status");
+  assert.equal(flowStatus.type, "object");
   const check: any = schemaFor("media.ffmpeg.check");
   assert.ok(check.required.includes("input"));
   assert.ok(check.properties.platform.enum.includes("reels"));

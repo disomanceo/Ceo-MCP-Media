@@ -7,7 +7,7 @@ import { isGuardrailError, preflightPrompt } from "./preflight.js";
 import { ExternalActionService } from "./external-actions.js";
 import { movieWorkspace, prepareMovieWorkspace, readMovieManifest, updateMovieManifest } from "./pipeline-workspace.js";
 
-const FLOW_URL = process.env.CEO_MEDIA_FLOW_URL || "https://labs.google/fx/tools/flow";
+const FLOW_URL = process.env.CEO_MEDIA_FLOW_URL || "https://flow.google.com/";
 const AI_STUDIO_URL = process.env.CEO_MEDIA_AI_STUDIO_URL || "https://aistudio.google.com/";
 
 type MovieState = {

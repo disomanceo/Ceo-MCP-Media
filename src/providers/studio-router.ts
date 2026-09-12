@@ -16,7 +16,7 @@ export interface StudioRoute {
   requiresBrowser?: boolean;
 }
 
-const FLOW_URL = process.env.CEO_MEDIA_FLOW_URL || "https://labs.google/fx/tools/flow";
+const FLOW_URL = process.env.CEO_MEDIA_FLOW_URL || "https://flow.google.com/";
 const AI_STUDIO_URL = process.env.CEO_MEDIA_AI_STUDIO_URL || "https://aistudio.google.com/";
 
 function enabled(name: "flow" | "ai-studio"): boolean {

@@ -63,7 +63,9 @@ export class JobRunner {
           const polled = await provider.pollVideo(operationId);
           if (!polled.done) {
             job.status = "waiting";
-            job.nextRunAt = new Date(Date.now() + Number(process.env.CEO_MEDIA_POLL_MS || 10_000)).toISOString();
+            const pollDelay = Math.max(1000, Number(polled.retryAfterMs || process.env.CEO_MEDIA_POLL_MS || 10_000));
+            job.nextRunAt = new Date(Date.now() + pollDelay).toISOString();
+            if (polled.errorCode) job.events.push({ at: nowIso(), level: "warn", message: "video.poll.waiting", data: { code: polled.errorCode, retryAfterMs: pollDelay } });
           } else if (polled.error) {
             throw new ProviderError(polled.error, { retryable: polled.retryable ?? false, retryAfterMs: polled.retryAfterMs, code: polled.errorCode });
           } else {

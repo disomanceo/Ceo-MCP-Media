@@ -6,6 +6,14 @@ ChatGPT / Ceo3
       v
 Ceo MCP Media (stdio MCP)
       |
+      +-- V11 Ceo Flow Browser
+      |      +-- bundled Playwright/Chrome driver
+      |      +-- dedicated local browser profile
+      |      +-- manual-only Google sign-in boundary
+      |      +-- persistent Flow operation/job state
+      |      +-- exact-once submit guard + polling/download
+      |      +-- reference-image upload
+      |
       +-- V10 Hardening Layer
       |      +-- Flow Native executable adapter
       |      +-- Asset Registry (SHA-256 identity/provenance)
@@ -60,7 +68,7 @@ The practical effect is that long scene prompts are written once during `media.m
 
 ## Browser-provider boundary
 
-Ceo MCP Media does not impersonate a signed-in browser. Web providers are represented as durable `external.action` jobs containing the URL, prompt, local references, expected output path and bounded semantic instructions. Ceo3/Playwright or Browser Companion performs the browser interaction, downloads the media locally, then calls `media.external.complete` with the resulting file path.
+V11 has two browser paths. The bundled `flow-native` driver controls a dedicated local Chrome profile directly for Google Flow video jobs and persists operation state locally. The legacy `flow-web` / `ai-studio-web` providers remain durable `external.action` jobs performed by Ceo3/Playwright or Browser Companion. Both paths keep authentication user-controlled.
 
 If Google requests sign-in, Ceo3 must pause for manual user sign-in. Account passwords, OTPs and other credentials are never requested, stored or typed by the media child.
 
@@ -69,7 +77,7 @@ If Google requests sign-in, Ceo3 must pause for manual user sign-in. Account pas
 `provider=auto` resolves independently by capability:
 - Gemini API is preferred when `GEMINI_API_KEY` is ready.
 - Without a Gemini key, image/anchor generation prefers Google AI Studio Web.
-- Without a Gemini key, video generation prefers Google Flow Web.
+- Without a Gemini key, video generation prefers the authenticated bundled Flow Native driver; Google Flow Web remains fallback.
 - Browser routes remain serial by default to reduce credit/quota pressure and preserve continuity.
 - Mock is used only when explicitly selected or `CEO_MEDIA_AUTO_ALLOW_MOCK=true`.
 

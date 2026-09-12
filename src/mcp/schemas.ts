@@ -58,6 +58,8 @@ const schemas: Record<string, Schema> = {
   "media.job.tick": obj({ limit: num() }),
   "media.job.cancel": obj({ jobId: str() }, ["jobId"]),
   "media.provider.status": obj({}),
+  "media.flow.local_status": obj({}),
+  "media.flow.local_auth": obj({ action: { type: "string", enum: ["open", "check"] } }, ["action"]),
   "media.flow.handoff": obj({ projectId: str(), outputPath: str() }, ["projectId"]),
   "media.capabilities": obj({})
 };

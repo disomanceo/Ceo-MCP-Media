@@ -6,6 +6,7 @@ import { planStoryboard } from "./storyboard.js";
 import { ProviderRouter } from "../providers/router.js";
 import { StudioRouter } from "../providers/studio-router.js";
 import { FlowBridge } from "../providers/flow-bridge.js";
+import { invokeFlowNative } from "../providers/flow-native-provider.js";
 import { ExternalActionService } from "./external-actions.js";
 import { reviewShot } from "./director.js";
 import { storyboardToSrt } from "./subtitles.js";
@@ -22,7 +23,7 @@ export const TOOL_NAMES = [
   "media.ffmpeg.status","media.ffmpeg.doctor","media.ffmpeg.contract","media.ffmpeg.render","media.ffmpeg.probe","media.ffmpeg.check","media.ffmpeg.look",
   "media.project.create","media.project.list","media.project.get","media.character.lock","media.storyboard.plan",
   "media.image.generate","media.video.generate","media.video.regenerate","media.audio.voice","media.audio.music","media.compose","media.subtitle.generate","media.director.review",
-  "media.job.status","media.job.list","media.job.run_once","media.job.tick","media.job.cancel","media.provider.status","media.flow.handoff","media.capabilities"
+  "media.job.status","media.job.list","media.job.run_once","media.job.tick","media.job.cancel","media.provider.status","media.flow.local_status","media.flow.local_auth","media.flow.handoff","media.capabilities"
 ];
 
 export class MediaToolService {
@@ -203,6 +204,12 @@ export class MediaToolService {
       case "media.job.tick": return this.runner.tick(args.limit ?? 20);
       case "media.job.cancel": return this.jobs.cancel(args.jobId);
       case "media.provider.status": return { executable: await this.router.status(), studio: await this.studio.status() };
+      case "media.flow.local_status": return invokeFlowNative("health", {});
+      case "media.flow.local_auth": {
+        const action = String(args.action || "check");
+        if (!["open", "check"].includes(action)) throw new Error("media.flow.local_auth action must be open or check");
+        return invokeFlowNative(action === "open" ? "auth.open" : "auth.check", {});
+      }
       case "media.director.review": {
         const p = await this.projects.get(args.projectId); if (!p.storyboard) throw new Error("project has no storyboard");
         return p.storyboard.shots.map((shot, i) => ({ shotId: shot.id, ...reviewShot(shot, i > 0 ? p.storyboard!.shots[i - 1] : undefined, args.threshold ?? 70) }));
@@ -217,8 +224,8 @@ export class MediaToolService {
         await writeJsonAtomic(outputPath, handoff); return { outputPath, handoff };
       }
       case "media.capabilities": return {
-        versions: ["v1","v2","v3","v4","v5","v6","v7","v8","v9","v10"], durable: true, autoMoviePipeline: true, autoWorker: process.env.CEO_MEDIA_AUTO_WORKER !== "false",
-        studioRouter: true, nativeProviders: ["flow-native"], browserProviders: ["flow-web","ai-studio-web"], browserExternalActions: true, capcutBridge: true,
+        versions: ["v1","v2","v3","v4","v5","v6","v7","v8","v9","v10","v11"], durable: true, autoMoviePipeline: true, autoWorker: process.env.CEO_MEDIA_AUTO_WORKER !== "false",
+        studioRouter: true, nativeProviders: ["flow-native"], browserProviders: ["flow-web","ai-studio-web"], browserExternalActions: true, localFlowBrowserDriver: true, capcutBridge: true,
         productionWorkspace: true, persistentManifest: true, seededReferenceImages: true, audioStage: true, assetRegistry: true,
         ffmpegSkill: ffmpegSkillStatus(), maxWorkerConcurrency: 4, strongIdempotency: true,
         providerAgnostic: true, flowOptional: true, guardrailPreflight: true, staleRunningRecovery: true, maxReferenceImages: 3, maxShotSec: 8, audioJobs: ["voice","music"], tools: TOOL_NAMES

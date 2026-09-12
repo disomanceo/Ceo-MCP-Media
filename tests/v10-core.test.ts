@@ -81,6 +81,8 @@ test("V10 ffmpeg-skill pin is immutable and capability manifest exposes V10", as
   assert.equal(status.expectedCommit, FFMPEG_SKILL_COMMIT);
   const capabilities: any = await new MediaToolService().call("media.capabilities");
   assert.ok(capabilities.versions.includes("v10"));
+  assert.ok(capabilities.versions.includes("v11"));
+  assert.equal(capabilities.localFlowBrowserDriver, true);
   assert.equal(capabilities.assetRegistry, true);
   assert.equal(capabilities.strongIdempotency, true);
   assert.equal(capabilities.maxWorkerConcurrency, 4);

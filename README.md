@@ -2,7 +2,7 @@
 
 Standalone durable media-production MCP for ChatGPT/Ceo3. It is deliberately separate from `Ceo-MCP-Agent`.
 
-## V1-V10
+## V1-V11
 - **V1** MCP foundation, projects, storyboards, provider contracts, durable jobs, FFmpeg composition.
 - **V2** Character Bible/Lock, reference images, multi-shot continuity, single-shot regeneration.
 - **V3** durable voice/music jobs, subtitles, audio composition, 16:9/9:16/1:1 presets, resolution/FPS metadata.
@@ -13,6 +13,7 @@ Standalone durable media-production MCP for ChatGPT/Ceo3. It is deliberately sep
 - **V8** Studio Router: `provider=auto` uses Gemini API when available; without `GEMINI_API_KEY`, anchor-image work routes to Google AI Studio Web and video shots route to Google Flow Web as durable external actions. CapCut is supported as a durable final-editor handoff.
 - **V9** Production Workspace: script/scene files, seeded user reference images, persistent `manifest.json`, compact progress/status, optional durable voice/music stage, and deterministic CapCut/FFmpeg export folders.
 - **V10** Production hardening: optional Flow Native executable provider, content-addressed Asset Registry, strong idempotency conflict detection, bounded 4-worker execution, pinned `ffmpeg-skill` 0.15.3 adapter, loudness/delivery checks and contact-sheet verification with legacy FFmpeg fallback when the skill is unavailable.
+- **V11** Ceo Flow Browser: bundled Playwright/Chrome driver controls Google Flow directly with a dedicated local browser profile, persistent operation state, duplicate-submit protection, polling/download, reference-image upload and manual-only Google sign-in. No `useapi.net` dependency is required.
 
 ## One-call production workflow
 
@@ -67,6 +68,14 @@ Each movie gets its own stable workspace under the media data directory:
 - When that exact skill pin is usable, FFmpeg composition uses declarative render + probe + delivery/loudness check + contact-sheet look verification. When the skill is unavailable, the V9 legacy FFmpeg composer remains the fallback.
 - MCP tools expose asset registry and ffmpeg-skill status/doctor/contract/render/probe/check/look operations without accepting raw shell command strings.
 
+## V11 Ceo Flow Browser
+
+- `media.flow.local_status` reports Chrome detection, local state/profile paths and authentication readiness without generating media.
+- `media.flow.local_auth` with `action=open` opens the dedicated Ceo Flow profile for the user to sign in manually; `action=check` verifies the session. Passwords, OTPs and CAPTCHA answers are never typed or stored by Ceo MCP Media.
+- The bundled driver stores operation state under `%LOCALAPPDATA%\Ceo\media-data\flow-native` and uses `%LOCALAPPDATA%\Ceo\flow-browser-profile` for the dedicated browser profile by default.
+- Video submission uses an exact-once guard immediately before the credit-spending Generate click. If submission state becomes uncertain, the operation fails closed rather than automatically spending credits twice.
+- AUTO routing is `Gemini API -> authenticated local Flow Native driver -> Flow Web external action`; image/anchor work still prefers Gemini or AI Studio Web because the bundled V11 Flow driver currently exposes video generation only.
+
 ## Reference images / character continuity
 
 `media.movie.create.character.referenceImages` accepts up to three local seed images. These are used while creating the continuity anchor, then the generated anchor plus seed references are reused across later shots. This is intended for workflows where the user supplies their own character/person reference images.
@@ -80,6 +89,8 @@ Set `generateVoice=true` and/or `generateMusic=true` to insert durable audio job
 Useful tools:
 - `media.studio.status` — inspect AUTO route choices.
 - `media.studio.route` — resolve image/video route without generating.
+- `media.flow.local_status` ? inspect the local Ceo Flow Browser driver and authentication readiness.
+- `media.flow.local_auth` ? open/check the dedicated Google Flow browser profile for manual sign-in.
 - `media.external.next` — read the next browser/CapCut action Ceo3 should perform.
 - `media.external.complete` — attach the downloaded/exported local file and resume the movie workflow.
 - `media.external.fail` — record a browser/editor failure without corrupting the parent workflow.
@@ -87,7 +98,7 @@ Useful tools:
 
 Default AUTO routing when no Gemini API credential is available:
 - **Image / anchor:** Google AI Studio Web.
-- **Video:** Google Flow Web.
+- **Video:** authenticated local Ceo Flow Browser (`flow-native`) first; Google Flow Web remains fallback.
 - **Final editor for browser-mode movies:** CapCut handoff (configurable).
 - **Verification/fallback:** FFmpeg/ffprobe.
 
@@ -123,7 +134,7 @@ npm test
 npm run build
 ```
 
-A Gemini API key is optional. Without it, leave `GEMINI_API_KEY` blank and keep browser studio routes enabled.
+A Gemini API key is optional. Without it, leave `GEMINI_API_KEY` blank. For local Google Flow video automation, run `npm run flow:auth`, sign in manually in the dedicated Ceo profile, close that browser window, then run `npm run flow:auth-check`. Flow Web remains available as fallback.
 
 Start MCP stdio server:
 
