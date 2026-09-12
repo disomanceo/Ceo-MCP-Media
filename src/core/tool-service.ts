@@ -119,7 +119,9 @@ export class MediaToolService {
         }
         await this.projects.setStoryboard(project.id, storyboard);
         const browserMode = imageRoute.mode === "browser" || videoRoute.mode === "browser";
-        const finalEditor = args.finalEditor ?? (browserMode ? (process.env.CEO_MEDIA_BROWSER_FINAL_EDITOR || "capcut") : (process.env.CEO_MEDIA_FINAL_EDITOR || "ffmpeg"));
+        const fastFlowMode = args.fastFlowMode ?? (videoRoute.provider === "flow-native");
+        const usePersistentFlowSession = args.usePersistentFlowSession ?? (videoRoute.provider === "flow-native");
+        const finalEditor = args.finalEditor ?? (process.env.CEO_MEDIA_FINAL_EDITOR || "ffmpeg");
         const job = await this.jobs.create({
           type: "movie.create", projectId: project.id,
           provider: imageRoute.provider === videoRoute.provider ? imageRoute.provider : undefined,
@@ -129,14 +131,15 @@ export class MediaToolService {
             provider: preference, resolvedImageProvider: imageRoute.provider, resolvedVideoProvider: videoRoute.provider,
             character: { ...args.character, referenceImages: (args.character.referenceImages ?? []).slice(0, 3) }, anchorPrompt: args.anchorPrompt, shotPrompts: args.shotPrompts, dialogues: args.dialogues,
             outputPath: args.outputPath, subtitlePath: args.subtitlePath, compose: args.compose !== false, finalEditor,
-            autoRewriteGuardrails: args.autoRewriteGuardrails !== false, videoConcurrency: args.videoConcurrency ?? 4,
+            autoRewriteGuardrails: args.autoRewriteGuardrails !== false, videoConcurrency: videoRoute.provider === "flow-native" ? 1 : (args.videoConcurrency ?? 4),
+            fastFlowMode, usePersistentFlowSession,
             generateVoice: args.generateVoice === true, voiceProvider: args.voiceProvider, voiceLanguage: args.voiceLanguage, voiceSpeed: args.voiceSpeed, voiceStyle: args.voiceStyle,
             generateMusic: args.generateMusic === true, musicProvider: args.musicProvider, musicPrompt: args.musicPrompt, musicMood: args.musicMood,
             idempotencyKey: args.idempotencyKey
           }
         });
         const currentProject = await this.projects.get(project.id);
-        const ws = await prepareMovieWorkspace(currentProject, job.id, job.input as any, { image: imageRoute, video: videoRoute, finalEditor });
+        const ws = await prepareMovieWorkspace(currentProject, job.id, job.input as any, { image: imageRoute, video: videoRoute, finalEditor, fastFlowMode, usePersistentFlowSession });
         job.providerState = { workspaceRoot: ws.root, manifestPath: ws.manifestPath };
         await this.jobs.save(job);
         return { movieJobId: job.id, projectId: project.id, status: job.status, preflight: checked, route: { image: imageRoute, video: videoRoute, finalEditor }, storyboard, workspaceRoot: ws.root, manifestPath: ws.manifestPath };
@@ -183,7 +186,7 @@ export class MediaToolService {
         const route = await this.studio.resolve("video", args.provider ?? "auto");
         if (!route.ready) throw new Error(route.reason);
         if (route.mode === "browser") return this.createExternalVideo({ ...args, projectId: p?.id, aspectRatio: args.aspectRatio ?? p?.aspectRatio ?? "16:9", resolution: args.resolution ?? p?.resolution ?? "1080p" }, route, outputPath, checked.safePrompt);
-        return this.jobs.create({ type: "video.generate", projectId: p?.id, provider: route.provider, idempotencyKey: args.idempotencyKey, input: { prompt: checked.safePrompt, outputPath, aspectRatio: args.aspectRatio ?? p?.aspectRatio ?? "16:9", resolution: args.resolution ?? p?.resolution ?? "1080p", durationSec: Math.min(8, args.durationSec ?? 8), referenceImages: (args.referenceImages ?? []).slice(0, 3), firstFrame: args.firstFrame, lastFrame: args.lastFrame } });
+        return this.jobs.create({ type: "video.generate", projectId: p?.id, provider: route.provider, idempotencyKey: args.idempotencyKey, input: { prompt: checked.safePrompt, outputPath, aspectRatio: args.aspectRatio ?? p?.aspectRatio ?? "16:9", resolution: args.resolution ?? p?.resolution ?? "1080p", durationSec: Math.min(8, args.durationSec ?? 8), referenceImages: (args.referenceImages ?? []).slice(0, 3), firstFrame: args.firstFrame, lastFrame: args.lastFrame, fastFlowMode: args.fastFlowMode ?? (route.provider === "flow-native"), usePersistentFlowSession: args.usePersistentFlowSession ?? (route.provider === "flow-native"), flowSessionKey: args.flowSessionKey || p?.id, flowProjectKey: args.flowProjectKey || p?.id } });
       }
       case "media.video.regenerate": {
         const old = await this.jobs.get(args.jobId); if (old.type !== "video.generate") throw new Error("job is not an API/local video generation job");

@@ -79,7 +79,7 @@ export class MovieOrchestrator {
     return this.jobs.create({ type: "image.generate", projectId: job.projectId, provider, idempotencyKey: `${job.id}:anchor:v2`, input: { prompt, outputPath, aspectRatio: job.input.aspectRatio, referenceImages: referenceImages.slice(0, 3) } });
   }
 
-  private async createShotJob(job: MediaJob<MovieCreateInput>, provider: ProviderKind, shotIndex: number, prompt: string, outputPath: string, referenceImages: string[]) {
+  private async createShotJob(job: MediaJob<MovieCreateInput>, provider: ProviderKind, shotIndex: number, prompt: string, outputPath: string, referenceImages: string[], firstFrame?: string) {
     if (isBrowserProvider(provider)) {
       const url = provider === "flow-web" ? FLOW_URL : AI_STUDIO_URL;
       return this.external.create(job.projectId, {
@@ -96,7 +96,7 @@ export class MovieOrchestrator {
         ]
       }, `${job.id}:shot:${shotIndex + 1}:external:v2`);
     }
-    return this.jobs.create({ type: "video.generate", projectId: job.projectId, provider, idempotencyKey: `${job.id}:shot:${shotIndex + 1}:v2`, input: { prompt, outputPath, aspectRatio: job.input.aspectRatio ?? "16:9", resolution: job.input.resolution ?? "1080p", durationSec: 8, referenceImages: referenceImages.slice(0, 3) } });
+    return this.jobs.create({ type: "video.generate", projectId: job.projectId, provider, idempotencyKey: `${job.id}:shot:${shotIndex + 1}:v3`, input: { prompt, outputPath, aspectRatio: job.input.aspectRatio ?? "16:9", resolution: job.input.resolution ?? "1080p", durationSec: 8, referenceImages: referenceImages.slice(0, 3), firstFrame, fastFlowMode: job.input.fastFlowMode ?? (provider === "flow-native"), usePersistentFlowSession: job.input.usePersistentFlowSession ?? (provider === "flow-native"), flowSessionKey: job.id, flowProjectKey: job.projectId } });
   }
 
   async advance(job: MediaJob<MovieCreateInput>): Promise<MediaJob<MovieCreateInput>> {
@@ -121,6 +121,16 @@ export class MovieOrchestrator {
     state.rewrites ??= {};
 
     if (state.phase === "anchor") {
+      const fastSeedReferences = uniquePaths(project.characters.flatMap((c) => c.referenceImages)).slice(0, 3);
+      if (!state.anchorJobId && !state.anchorPath && videoProvider === "flow-native" && input.fastFlowMode !== false && fastSeedReferences.length > 0) {
+        state.anchorPath = fastSeedReferences[0];
+        character.referenceImages = fastSeedReferences;
+        for (const shot of project.storyboard.shots) shot.referenceImages = fastSeedReferences;
+        await this.projects.save(project);
+        state.phase = "shots";
+        job.events.push({ at: nowIso(), level: "info", message: "movie.anchor.reused-seed-reference", data: { outputPath: state.anchorPath, referenceCount: fastSeedReferences.length, fastFlowMode: true } });
+        return this.waiting(job, project, state, 10);
+      }
       if (!state.anchorJobId) {
         const initialReferences = uniquePaths(project.characters.flatMap((c) => c.referenceImages)).slice(0, 3);
         const raw = input.anchorPrompt || `${character.description}\nWardrobe/equipment: ${character.wardrobe ?? "consistent original design"}\nCreate a clean full-body continuity anchor for: ${project.brief}`;
@@ -178,12 +188,12 @@ export class MovieOrchestrator {
         state.phase = "audio";
         job.events.push({ at: nowIso(), level: "info", message: "movie.shots.completed", data: { shots: shots.length, subtitlePath: state.subtitlePath } });
       } else {
-        const concurrency = isBrowserProvider(videoProvider) ? 1 : Math.max(1, Math.min(4, Number(input.videoConcurrency || process.env.CEO_MEDIA_MOVIE_VIDEO_CONCURRENCY || 4)));
+        const concurrency = (isBrowserProvider(videoProvider) || videoProvider === "flow-native") ? 1 : Math.max(1, Math.min(4, Number(input.videoConcurrency || process.env.CEO_MEDIA_MOVIE_VIDEO_CONCURRENCY || 4)));
         for (let i = 0; i < shots.length && active < concurrency; i++) {
           if (state.shotJobIds![i]) continue;
           const checked = preflightPrompt(input.shotPrompts?.[i] || shots[i].prompt, autoRewrite);
           const references = uniquePaths([...(shots[i].referenceImages || []), state.anchorPath]).slice(0, 3);
-          const child = await this.createShotJob(job, videoProvider, i, checked.safePrompt, ws.shotPath(i), references);
+          const child = await this.createShotJob(job, videoProvider, i, checked.safePrompt, ws.shotPath(i), references, state.anchorPath);
           state.shotJobIds![i] = child.id; shots[i].status = "queued"; active++;
           job.events.push({ at: nowIso(), level: "info", message: "movie.shot.created", data: { shot: i + 1, jobId: child.id, provider: videoProvider, preflightRisk: checked.risk } });
         }

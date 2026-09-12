@@ -13,10 +13,10 @@ export interface JobEvent { at: string; level: "info" | "warn" | "error"; messag
 export interface MediaJob<T = Record<string, unknown>> { id: string; projectId?: string; type: string; status: JobStatus; input: T; output?: Record<string, unknown>; provider?: ProviderKind; providerState?: Record<string, unknown>; idempotencyKey?: string; requestHash?: string; attempts: number; maxAttempts: number; timeoutMs: number; createdAt: string; updatedAt: string; nextRunAt?: string; error?: string; events: JobEvent[]; cancelledAt?: string; }
 export interface ProviderHealth { id: ProviderKind; ready: boolean; capabilities: string[]; reason?: string; model?: string; }
 export interface ImageRequest { prompt: string; outputPath: string; aspectRatio?: AspectRatio; referenceImages?: string[]; }
-export interface VideoRequest { prompt: string; outputPath: string; aspectRatio: AspectRatio; resolution: Resolution; durationSec?: number; referenceImages?: string[]; firstFrame?: string; lastFrame?: string; }
+export interface VideoRequest { prompt: string; outputPath: string; aspectRatio: AspectRatio; resolution: Resolution; durationSec?: number; referenceImages?: string[]; firstFrame?: string; lastFrame?: string; fastFlowMode?: boolean; usePersistentFlowSession?: boolean; flowSessionKey?: string; flowProjectKey?: string; }
 export interface VoiceRequest { text: string; outputPath: string; voice?: string; language?: string; speed?: number; style?: string; }
 export interface MusicRequest { prompt: string; outputPath: string; durationSec?: number; mood?: string; instrumental?: boolean; }
-export interface VideoPollResult { done: boolean; downloadUri?: string; error?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; }
+export interface VideoPollResult { done: boolean; downloadUri?: string; generationId?: string; error?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; }
 export interface ReviewResult { score: number; accepted: boolean; reasons: string[]; retryPrompt?: string; }
 
 export interface MovieCharacterInput {
@@ -49,6 +49,8 @@ export interface MovieCreateInput {
   finalEditor?: FinalEditor;
   autoRewriteGuardrails?: boolean;
   videoConcurrency?: number;
+  fastFlowMode?: boolean;
+  usePersistentFlowSession?: boolean;
   generateVoice?: boolean;
   voiceProvider?: "mock" | "gemini";
   voiceLanguage?: string;

@@ -125,7 +125,7 @@ export async function runFfmpegSkill(operation: FfmpegSkillOperation, args: Reco
     if (args.output) argv.push("--output", path.resolve(String(args.output)));
     if (args.tiles) argv.push("--tiles", String(args.tiles));
     if (args.width != null) argv.push("--width", String(args.width));
-    if (args.noTimecode) argv.push("--no-timecode");
+    if (args.noTimecode !== false) argv.push("--no-timecode");
     return (await runPython("look.py", argv)).result;
   }
   throw new Error(`Unsupported ffmpeg-skill operation: ${operation}`);

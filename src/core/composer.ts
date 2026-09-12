@@ -1,6 +1,6 @@
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { unlink, writeFile } from "node:fs/promises";
+import { copyFile, unlink, writeFile } from "node:fs/promises";
 import { ensureDir, newId } from "./utils.js";
 import { resolveFfmpeg } from "./media-tools.js";
 import { ffmpegSkillStatus, runFfmpegSkill } from "./ffmpeg-skill-adapter.js";
@@ -34,12 +34,34 @@ async function run(executable: string, args: string[]): Promise<void> {
   });
 }
 
+async function repairAudioDelivery(outputPath: string, lufs: number, truePeakDb: number): Promise<void> {
+  const ffmpeg = resolveFfmpeg();
+  const parsed = path.parse(outputPath);
+  const temp = path.join(parsed.dir, `.${parsed.name}-audio-safe-${newId("tmp")}${parsed.ext || ".mp4"}`);
+  const safeTp = Math.min(truePeakDb, -2);
+  try {
+    await run(ffmpeg, [
+      "-y", "-i", outputPath,
+      "-map", "0:v:0", "-map", "0:a:0?",
+      "-c:v", "copy",
+      "-af", `loudnorm=I=${lufs}:TP=${safeTp}:LRA=11`,
+      "-c:a", "aac", "-b:a", "192k",
+      "-movflags", "+faststart", temp
+    ]);
+    await copyFile(temp, outputPath);
+  } finally {
+    await unlink(temp).catch(() => undefined);
+  }
+}
+
 async function composeWithSkill(input: ComposeInput): Promise<ComposeResult> {
   await ensureDir(path.dirname(input.outputPath));
   const projectFile = path.join(path.dirname(input.outputPath), `.ffmpeg-skill-${newId("render")}.json`);
   const sheetPath = path.join(path.dirname(input.outputPath), `${path.parse(input.outputPath).name}-contact-sheet.png`);
   const platform = input.deliveryPlatform ?? "youtube";
   const transitionSec = input.transitionSec ?? Number(process.env.CEO_MEDIA_TRANSITION_SEC || 0.25);
+  const requestedTruePeakDb = input.truePeakDb ?? -1;
+  const renderTruePeakDb = Math.min(requestedTruePeakDb, -1.5);
   const sourceProbes = await Promise.all(input.clips.map((clip) => runFfmpegSkill("probe", { input: clip })));
   const hasAudio = Boolean(input.audioFile || input.musicFile || sourceProbes.some((probe: any) => Boolean(probe?.audio)));
   const project: Record<string, unknown> = {
@@ -53,18 +75,26 @@ async function composeWithSkill(input: ComposeInput): Promise<ComposeResult> {
         ...(input.musicFile ? { music: path.resolve(input.musicFile), music_volume: -18, music_loop: true, duck: Boolean(input.audioFile) } : {})
       }
     } : {}),
-    ...(hasAudio ? { loudness: { lufs: input.loudnessLufs ?? -14, tp: input.truePeakDb ?? -1 } } : {})
+    ...(hasAudio ? { loudness: { lufs: input.loudnessLufs ?? -14, tp: renderTruePeakDb } } : {})
   };
   await writeFile(projectFile, JSON.stringify(project, null, 2), "utf8");
   try {
     const render = await runFfmpegSkill("render", { project: projectFile });
-    const probe = await runFfmpegSkill("probe", { input: input.outputPath, analyze: true });
-    const check = await runFfmpegSkill("check", { input: input.outputPath, platform, lufs: input.loudnessLufs ?? -14, tp: input.truePeakDb ?? -1, noLoudness: !hasAudio });
-    const look = await runFfmpegSkill("look", { input: input.outputPath, output: sheetPath, tiles: "4x3", width: 1280 });
-    const failed = Number((check as any)?.failed || 0);
+    let probe = await runFfmpegSkill("probe", { input: input.outputPath, analyze: true });
+    let check = await runFfmpegSkill("check", { input: input.outputPath, platform, lufs: input.loudnessLufs ?? -14, tp: requestedTruePeakDb, noLoudness: !hasAudio });
+    let failedChecks = Array.isArray((check as any)?.checks) ? (check as any).checks.filter((item: any) => item?.status === "FAIL") : [];
+    const audioOnlyFailure = hasAudio && failedChecks.length > 0 && failedChecks.every((item: any) => ["loudness", "true peak"].includes(String(item?.check || "").toLowerCase()));
+    if (audioOnlyFailure) {
+      await repairAudioDelivery(input.outputPath, input.loudnessLufs ?? -14, requestedTruePeakDb);
+      probe = await runFfmpegSkill("probe", { input: input.outputPath, analyze: true });
+      check = await runFfmpegSkill("check", { input: input.outputPath, platform, lufs: input.loudnessLufs ?? -14, tp: requestedTruePeakDb, noLoudness: false });
+      failedChecks = Array.isArray((check as any)?.checks) ? (check as any).checks.filter((item: any) => item?.status === "FAIL") : [];
+    }
+    const look = await runFfmpegSkill("look", { input: input.outputPath, output: sheetPath, tiles: "4x3", width: 1280, noTimecode: true });
+    const failed = Number((check as any)?.failed ?? failedChecks.length);
     const exitCode = Number((check as any)?.exitCode || 0);
     if (failed > 0 || exitCode !== 0) throw new Error(`ffmpeg-skill delivery verification failed for ${platform}`);
-    return { outputPath: input.outputPath, engine: "ffmpeg-skill", verification: { render, probe, check, look }, contactSheet: sheetPath };
+    return { outputPath: input.outputPath, engine: "ffmpeg-skill", verification: { render, probe, check, look, audioRepairApplied: audioOnlyFailure }, contactSheet: sheetPath };
   } finally {
     await unlink(projectFile).catch(() => undefined);
   }

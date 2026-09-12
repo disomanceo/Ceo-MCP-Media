@@ -21,7 +21,7 @@ export interface MediaProvider {
   generateImage?(request: ImageRequest): Promise<{ outputPath: string }>;
   generateVoice?(request: VoiceRequest): Promise<{ outputPath: string }>;
   generateMusic?(request: MusicRequest): Promise<{ outputPath: string }>;
-  startVideo?(request: VideoRequest): Promise<{ operationId: string }>;
+  startVideo?(request: VideoRequest): Promise<{ operationId: string; generationId?: string }>;
   pollVideo?(operationId: string): Promise<VideoPollResult>;
   downloadVideo?(downloadUri: string, outputPath: string): Promise<{ outputPath: string }>;
 }

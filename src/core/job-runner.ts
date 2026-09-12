@@ -55,12 +55,13 @@ export class JobRunner {
         const operationId = String(job.providerState?.operationId || "");
         if (!operationId) {
           const started = await provider.startVideo(input);
-          job.providerState = { operationId: started.operationId, provider: provider.id, pollErrors: 0 };
+          job.providerState = { operationId: started.operationId, generationId: started.generationId, provider: provider.id, pollErrors: 0 };
           job.provider = provider.id; job.status = "waiting";
           job.nextRunAt = new Date(Date.now() + Number(process.env.CEO_MEDIA_POLL_MS || 10_000)).toISOString();
-          job.events.push({ at: nowIso(), level: "info", message: "video.operation.started", data: { operationId: started.operationId } });
+          job.events.push({ at: nowIso(), level: "info", message: "video.operation.started", data: { operationId: started.operationId, generationId: started.generationId } });
         } else {
           const polled = await provider.pollVideo(operationId);
+          if (polled.generationId) job.providerState = { ...(job.providerState || {}), generationId: polled.generationId };
           if (!polled.done) {
             job.status = "waiting";
             const pollDelay = Math.max(1000, Number(polled.retryAfterMs || process.env.CEO_MEDIA_POLL_MS || 10_000));

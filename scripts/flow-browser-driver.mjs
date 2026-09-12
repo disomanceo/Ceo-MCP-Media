@@ -16,6 +16,9 @@ const authFile = path.join(stateRoot, "auth-state.json");
 const operationDir = path.join(stateRoot, "operations");
 const requestDir = path.join(stateRoot, "requests");
 const downloadDir = path.join(stateRoot, "downloads");
+const sessionDir = path.join(stateRoot, "sessions");
+const assetCacheFile = path.join(stateRoot, "asset-cache.json");
+const submissionLockFile = path.join(stateRoot, "submission.lock.json");
 const AUTH_TTL_MS = Math.max(60_000, Number(process.env.CEO_MEDIA_FLOW_AUTH_TTL_MS || 12 * 60 * 60 * 1000));
 const INTERACTIVE_CDP_PORT = Math.max(1024, Number(process.env.CEO_MEDIA_FLOW_CDP_PORT || 9223));
 const INTERACTIVE_CDP_URL = `http://127.0.0.1:${INTERACTIVE_CDP_PORT}`;
@@ -42,7 +45,7 @@ function operationFile(id) { return path.join(operationDir, `${id}.json`); }
 function requestFile(digest) { return path.join(requestDir, `${digest}.json`); }
 
 async function ensureDirs() {
-  await Promise.all([stateRoot, operationDir, requestDir, downloadDir, profileDir].map((dir) => fsp.mkdir(dir, { recursive: true })));
+  await Promise.all([stateRoot, operationDir, requestDir, downloadDir, sessionDir, profileDir].map((dir) => fsp.mkdir(dir, { recursive: true })));
 }
 
 async function readJson(file) {
@@ -54,6 +57,82 @@ async function writeJson(file, value) {
   const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
   await fsp.writeFile(temp, safeJson(value), "utf8");
   await fsp.rename(temp, file);
+}
+
+function normalizeKey(value) {
+  return String(value || "default").replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 180) || "default";
+}
+
+function sessionFile(input = {}) {
+  return path.join(sessionDir, `${normalizeKey(input.flowSessionKey || input.flowProjectKey || "default")}.json`);
+}
+
+async function loadFastSession(input = {}) {
+  return await readJson(sessionFile(input)) || { version: 1, sessionKey: normalizeKey(input.flowSessionKey || input.flowProjectKey || "default"), createdAt: nowIso() };
+}
+
+async function saveFastSession(input, state) {
+  const next = { ...state, version: 1, sessionKey: normalizeKey(input.flowSessionKey || input.flowProjectKey || "default"), updatedAt: nowIso() };
+  await writeJson(sessionFile(input), next);
+  return next;
+}
+
+async function sha256File(file) {
+  const digest = crypto.createHash("sha256");
+  const stream = fs.createReadStream(file);
+  for await (const chunk of stream) digest.update(chunk);
+  return digest.digest("hex");
+}
+
+async function loadAssetCache() {
+  const cache = await readJson(assetCacheFile);
+  return cache && cache.assets ? cache : { version: 1, updatedAt: nowIso(), assets: {} };
+}
+
+async function rememberAsset(projectUrl, file, details = {}) {
+  const digest = await sha256File(file);
+  const cache = await loadAssetCache();
+  const key = `${String(projectUrl || "unknown")}::${digest}`;
+  const previous = cache.assets[key] || {};
+  cache.assets[key] = { ...previous, ...details, digest, file: path.resolve(file), name: path.basename(file), projectUrl: String(projectUrl || ""), assetId: details.assetId || previous.assetId || `sha256-${digest.slice(0, 24)}`, uploadedAt: details.uploadedAt || previous.uploadedAt || nowIso(), lastSeenAt: nowIso() };
+  cache.updatedAt = nowIso();
+  await writeJson(assetCacheFile, cache);
+  return cache.assets[key];
+}
+
+async function cachedAsset(projectUrl, file) {
+  if (!file || !fs.existsSync(file)) return null;
+  const digest = await sha256File(file);
+  const cache = await loadAssetCache();
+  return cache.assets[`${String(projectUrl || "unknown")}::${digest}`] || null;
+}
+
+async function acquireSubmissionLock(owner, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const handle = await fsp.open(submissionLockFile, "wx");
+      await handle.writeFile(safeJson({ owner, pid: process.pid, acquiredAt: nowIso() }));
+      await handle.close();
+      return async () => { await fsp.unlink(submissionLockFile).catch(() => {}); };
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      const lock = await readJson(submissionLockFile);
+      const acquiredAt = lock?.acquiredAt ? Date.parse(lock.acquiredAt) : 0;
+      if (!acquiredAt || Date.now() - acquiredAt > 5 * 60 * 1000) {
+        await fsp.unlink(submissionLockFile).catch(() => {});
+        continue;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw new Error("[FLOW_SUBMISSION_BUSY] Timed out waiting for the single Flow submission lane");
+}
+
+function pushEvent(state, message, data = {}) {
+  state.events ??= [];
+  state.events.push({ at: nowIso(), message, ...data });
+  if (state.events.length > 200) state.events = state.events.slice(-200);
 }
 
 async function readInput() {
@@ -363,21 +442,43 @@ async function uploadReferences(page, references) {
 
 async function ensureProjectAssetUploaded(page, file) {
   if (!file || !fs.existsSync(file)) throw new Error(`[REFERENCE_NOT_FOUND] Missing reference file: ${file}`);
+  const projectUrl = page.url();
   const name = path.basename(file);
   const escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, (ch) => `\\${ch}`);
+  const cached = await cachedAsset(projectUrl, file);
   let asset = page.locator("flow-grid-tile-container").filter({ hasText: new RegExp(escaped, "i") }).first();
-  if (!await asset.isVisible().catch(() => false)) {
-    const addMedia = page.getByRole("button", { name: /เมนูเพิ่มสื่อ|add media/i }).first();
-    if (!await addMedia.isVisible().catch(() => false)) throw new Error("[FLOW_UI_CHANGED] Project media upload menu was not found");
-    await addMedia.click();
-    await page.waitForTimeout(250);
-    const upload = page.locator("button").filter({ hasText: /อัปโหลด|upload/i }).last();
-    if (!await upload.isVisible().catch(() => false)) throw new Error("[FLOW_UI_CHANGED] Project media upload action was not found");
-    const chooserPromise = page.waitForEvent("filechooser", { timeout: 5000 });
-    await upload.click();
-    const chooser = await chooserPromise;
-    await chooser.setFiles(file);
+  const alreadyVisible = await asset.isVisible().catch(() => false);
+  if (alreadyVisible) {
+    const assetId = await asset.getAttribute("data-id").catch(() => null) || await asset.getAttribute("id").catch(() => null) || cached?.assetId;
+    const entry = await rememberAsset(projectUrl, file, { assetId, discovered: !cached, reused: true });
+    return { file, name, uploaded: false, reused: true, complete: true, digest: entry.digest, assetId: entry.assetId };
   }
+
+  if (cached) {
+    // Cache says this exact file hash was uploaded to this project, but the tile is not yet visible.
+    // Give Flow a short chance to finish rendering the existing library before attempting a new upload.
+    const renderDeadline = Date.now() + 5000;
+    while (Date.now() < renderDeadline) {
+      asset = page.locator("flow-grid-tile-container").filter({ hasText: new RegExp(escaped, "i") }).first();
+      if (await asset.isVisible().catch(() => false)) {
+        const assetId = await asset.getAttribute("data-id").catch(() => null) || await asset.getAttribute("id").catch(() => null) || cached.assetId;
+        const entry = await rememberAsset(projectUrl, file, { assetId, reused: true });
+        return { file, name, uploaded: false, reused: true, complete: true, digest: entry.digest, assetId: entry.assetId };
+      }
+      await page.waitForTimeout(250);
+    }
+  }
+
+  const addMedia = page.getByRole("button", { name: /เมนูเพิ่มสื่อ|add media/i }).first();
+  if (!await addMedia.isVisible().catch(() => false)) throw new Error("[FLOW_UI_CHANGED] Project media upload menu was not found");
+  await addMedia.click();
+  await page.waitForTimeout(250);
+  const upload = page.locator("button").filter({ hasText: /อัปโหลด|upload/i }).last();
+  if (!await upload.isVisible().catch(() => false)) throw new Error("[FLOW_UI_CHANGED] Project media upload action was not found");
+  const chooserPromise = page.waitForEvent("filechooser", { timeout: 5000 });
+  await upload.click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles(file);
 
   const deadline = Date.now() + 90_000;
   while (Date.now() < deadline) {
@@ -386,7 +487,11 @@ async function ensureProjectAssetUploaded(page, file) {
     const text = visible ? await asset.innerText().catch(() => "") : "";
     const bodyTail = (await page.locator("body").innerText().catch(() => "")).slice(-3500);
     const stillUploading = /กำลังอัปโหลด|uploading|(?:^|\s)\d{1,3}%\s*(?:$|\n)/im.test(`${text}\n${bodyTail}`);
-    if (visible && !stillUploading) return { file, name, uploaded: true, complete: true };
+    if (visible && !stillUploading) {
+      const assetId = await asset.getAttribute("data-id").catch(() => null) || await asset.getAttribute("id").catch(() => null);
+      const entry = await rememberAsset(projectUrl, file, { assetId, reused: false, uploadedAt: nowIso() });
+      return { file, name, uploaded: true, reused: false, complete: true, digest: entry.digest, assetId: entry.assetId };
+    }
     await page.waitForTimeout(500);
   }
   throw new Error(`[UPLOAD_TIMEOUT] Project library upload did not reach 100% for ${name}`);
@@ -529,16 +634,44 @@ async function findGenerateButton(page) {
 }
 
 async function prepareVideoPage(page, request) {
-  const state = await enterFlow(page);
+  const fastFlowMode = request.fastFlowMode !== false;
+  let fastSession = fastFlowMode ? await loadFastSession(request) : null;
+  let state;
+  const currentUrl = page.url();
+  const desiredProjectUrl = fastSession?.projectUrl || "";
+  if (fastFlowMode && desiredProjectUrl) {
+    if (!currentUrl.startsWith(desiredProjectUrl)) {
+      await page.goto(desiredProjectUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+      await page.waitForTimeout(700);
+    }
+    state = await inspectPage(page);
+  } else if (fastFlowMode && /flow\.google\.com\/project\//i.test(currentUrl)) {
+    state = await inspectPage(page);
+  } else {
+    state = await enterFlow(page);
+  }
   if (state.captcha) throw new Error("[CAPTCHA_REQUIRED] Google Flow requires manual CAPTCHA completion in the Ceo Flow browser profile");
   if (state.authRequired || state.landing || !state.app) {
     await markAuth(false, state.url, { captcha: state.captcha, landing: state.landing });
     throw new Error("[AUTH_REQUIRED] Google Flow requires manual sign-in in the Ceo Flow browser profile");
   }
   await markAuth(true, state.url);
-  const promptBox = await ensureProjectPage(page, { forceNewProject: request.forceNewProject === true });
+  const shouldCreateProject = request.forceNewProject === true || (fastFlowMode && !fastSession?.projectUrl && Boolean(request.flowSessionKey || request.flowProjectKey));
+  const promptBox = await ensureProjectPage(page, { forceNewProject: shouldCreateProject });
   if (!promptBox) throw new Error("[FLOW_UI_CHANGED] Could not locate the Google Flow prompt editor after opening a project");
-  const settings = await configureVideoSettings(page, request);
+
+  const projectUrl = page.url();
+  const settingsDigest = hash({ aspectRatio: request.aspectRatio || null, resolution: request.resolution || null, durationSec: request.durationSec || null, model: process.env.CEO_MEDIA_FLOW_VIDEO_MODEL || "" });
+  let settings;
+  if (fastFlowMode && fastSession?.projectUrl === projectUrl && fastSession?.settingsDigest === settingsDigest) {
+    settings = { confirmed: true, framesConfirmed: true, aspectConfirmed: Boolean(request.aspectRatio), selectedResolution: request.resolution || null, durationConfirmed: Boolean(request.durationSec), countConfirmed: true, selectedModel: fastSession.selectedModel || null, warnings: [], reused: true };
+  } else {
+    settings = await configureVideoSettings(page, request);
+    if (fastFlowMode) {
+      fastSession = await saveFastSession(request, { ...(fastSession || {}), projectUrl, settingsDigest, selectedModel: settings.selectedModel || null, settingsAppliedAt: nowIso() });
+    }
+  }
+
   const requestedReferences = Array.isArray(request.referenceImages) ? request.referenceImages.slice(0, 3) : [];
   const libraryFiles = [...new Set([...requestedReferences, request.firstFrame].filter(Boolean))];
   const references = await uploadProjectReferences(page, libraryFiles);
@@ -546,7 +679,7 @@ async function prepareVideoPage(page, request) {
   const firstFrame = await selectStartFrame(page, request.firstFrame);
   const expectedPrompt = String(request.prompt || "");
   await promptBox.fill(expectedPrompt);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(350);
   const actualPrompt = await promptBox.innerText().catch(async () => promptBox.inputValue().catch(() => ""));
   if (expectedPrompt && (!actualPrompt || !String(actualPrompt).includes(expectedPrompt.slice(0, Math.min(120, expectedPrompt.length))))) {
     throw new Error("[PROMPT_NOT_COMMITTED] Flow prompt editor did not retain the requested prompt before submission");
@@ -559,11 +692,17 @@ async function prepareVideoPage(page, request) {
   if (strict && request.durationSec && !settings.durationConfirmed) throw new Error(`[SETTINGS_NOT_CONFIRMED] Could not confirm duration ${request.durationSec}s in current Flow UI`);
   if (strict && !settings.countConfirmed) throw new Error("[SETTINGS_NOT_CONFIRMED] Could not confirm x1 generation count in current Flow UI");
   if (request.firstFrame && !firstFrame.confirmed) throw new Error("[START_FRAME_NOT_CONFIRMED] Could not confirm the requested Start Frame");
+  if (fastFlowMode) {
+    fastSession = await saveFastSession(request, { ...(fastSession || {}), projectUrl, settingsDigest, lastPreparedAt: nowIso(), lastReferenceDigests: references.files?.map((x) => x.digest).filter(Boolean) || [] });
+  }
   return {
     pageState: state,
     references,
     firstFrame,
-    projectUrl: page.url(),
+    projectUrl,
+    fastFlowMode,
+    fastSessionKey: fastSession?.sessionKey || null,
+    assetCacheFile,
     aspect: { requested: request.aspectRatio || null, confirmed: settings.aspectConfirmed },
     settings,
     warnings: settings.warnings || []
@@ -572,15 +711,18 @@ async function prepareVideoPage(page, request) {
 
 async function videoStart(request) {
   await ensureDirs();
-  const requestDigest = hash({ type: "video", prompt: request.prompt, aspectRatio: request.aspectRatio, resolution: request.resolution, durationSec: request.durationSec, referenceImages: request.referenceImages || [], firstFrame: request.firstFrame || null, lastFrame: request.lastFrame || null, outputPath: request.outputPath || null, forceNewProject: request.forceNewProject === true });
+  const fastFlowMode = request.fastFlowMode !== false;
+  const requestDigest = hash({ type: "video", prompt: request.prompt, aspectRatio: request.aspectRatio, resolution: request.resolution, durationSec: request.durationSec, referenceImages: request.referenceImages || [], firstFrame: request.firstFrame || null, lastFrame: request.lastFrame || null, outputPath: request.outputPath || null, forceNewProject: request.forceNewProject === true, fastFlowMode, flowSessionKey: request.flowSessionKey || null, flowProjectKey: request.flowProjectKey || null });
   const reusable = await findReusable(requestDigest);
-  if (reusable) return { operationId: reusable.id, reused: true, status: reusable.status };
+  if (reusable) return { operationId: reusable.id, generationId: reusable.generationId || reusable.id, reused: true, status: reusable.status };
 
   const auth = await authState();
   if (!auth.authenticated) throw new Error("[AUTH_REQUIRED] Ceo Flow Browser is not authenticated; run media.flow.local_auth action=open then action=check");
 
   const id = `flow-${crypto.randomUUID()}`;
-  const state = { id, requestDigest, status: "preparing", request, createdAt: nowIso(), updatedAt: nowIso(), pageUrl: FLOW_URL, warnings: [] };
+  const releaseSubmission = await acquireSubmissionLock(id);
+  const state = { id, requestDigest, status: "preparing", request, createdAt: nowIso(), updatedAt: nowIso(), pageUrl: FLOW_URL, warnings: [], fastFlowMode };
+  pushEvent(state, "flow.submission-lane.acquired", { owner: id });
   await saveOperation(state);
   await linkRequest(requestDigest, id);
 
@@ -588,13 +730,20 @@ async function videoStart(request) {
   try {
     session = await acquireFlowSession({ interactive: true });
     state.sessionMode = session.mode;
+    pushEvent(state, "flow.browser.reused", { mode: session.mode, external: session.external === true });
     const context = session.context;
     const page = context.pages()[0] || await context.newPage();
     const prepared = await prepareVideoPage(page, request);
     state.warnings = prepared.warnings;
     state.referenceUpload = prepared.references;
+    state.assetCacheFile = prepared.assetCacheFile;
+    state.fastSessionKey = prepared.fastSessionKey;
     state.aspect = prepared.aspect;
-    state.pageUrl = page.url();
+    state.pageUrl = prepared.projectUrl || page.url();
+    pushEvent(state, "flow.project.ready", { projectUrl: state.pageUrl, settingsReused: prepared.settings?.reused === true });
+    for (const item of prepared.references?.files || []) {
+      pushEvent(state, item.reused ? "flow.reference.reused" : "flow.reference.uploaded", { file: item.file, digest: item.digest, assetId: item.assetId });
+    }
     state.status = "ready";
     await saveOperation(state);
 
@@ -602,7 +751,6 @@ async function videoStart(request) {
     if (!generate) throw new Error("[FLOW_UI_CHANGED] Could not locate the Google Flow Generate/Create button");
     if (!await generate.isEnabled().catch(() => false)) throw new Error("[FLOW_UI_NOT_READY] Generate/Create is disabled after settings, upload and Start Frame selection");
 
-    const beforeBody = await page.locator("body").innerText().catch(() => "");
     const beforeTileCount = await page.locator("flow-grid-tile-container").count().catch(() => 0);
     let networkSignal = null;
     const onResponse = (response) => {
@@ -610,7 +758,9 @@ async function videoStart(request) {
         const req = response.request();
         const url = response.url();
         if (req.method() === "POST" && response.status() >= 200 && response.status() < 400 && /flow\.google\.com/i.test(url)) {
-          networkSignal = { url, status: response.status(), method: req.method() };
+          const headers = response.headers();
+          const requestId = headers?.["x-request-id"] || headers?.["x-goog-request-id"] || headers?.["x-cloud-trace-context"] || null;
+          networkSignal = { url, status: response.status(), method: req.method(), requestId };
         }
       } catch {}
     };
@@ -620,6 +770,7 @@ async function videoStart(request) {
     state.firstFrame = prepared.firstFrame;
     state.settings = prepared.settings;
     state.pageUrl = page.url();
+    pushEvent(state, "flow.generate.click", { beforeTileCount });
     await saveOperation(state);
     await generate.click();
 
@@ -646,13 +797,19 @@ async function videoStart(request) {
       throw new Error("[SUBMISSION_UNCONFIRMED] Generate was clicked but Flow did not expose a durable generation tile, progress, queue or processing state; automatic resubmission is blocked");
     }
 
+    const lastTile = page.locator("flow-grid-tile-container").last();
+    const tileId = await lastTile.getAttribute("data-id").catch(() => null) || await lastTile.getAttribute("id").catch(() => null) || await lastTile.getAttribute("data-testid").catch(() => null);
+    const tileText = await lastTile.innerText().catch(() => "");
+    const generationId = networkSignal?.requestId || tileId || `flow-ui-${hash({ operationId: id, tileText: String(tileText).slice(0, 500), projectUrl: page.url() }).slice(0, 24)}`;
     state.status = "submitted";
+    state.generationId = generationId;
     state.submittedAt = nowIso();
     state.backendAcceptedAt = nowIso();
-    state.backendAcceptance = { ui: acceptanceEvidence, network: networkSignal };
+    state.backendAcceptance = { ui: acceptanceEvidence, network: networkSignal, generationId };
     state.pageUrl = page.url();
+    pushEvent(state, "flow.backend.accepted", { generationId, projectUrl: state.pageUrl });
     await saveOperation(state);
-    return { operationId: id, status: state.status, backendAccepted: true, projectUrl: state.pageUrl, warnings: state.warnings };
+    return { operationId: id, generationId, status: state.status, backendAccepted: true, projectUrl: state.pageUrl, warnings: state.warnings, fastFlowMode };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const blocker = error?.flowBlocker || null;
@@ -672,10 +829,12 @@ async function videoStart(request) {
       state.error = message;
       state.retryable = false;
     }
+    pushEvent(state, "flow.error", { status: state.status, errorCode: state.errorCode || null, message });
     await saveOperation(state);
     throw error;
   } finally {
     await releaseFlowSession(session);
+    await releaseSubmission();
   }
 }
 
@@ -719,7 +878,7 @@ async function tryDownload(page, operationId) {
 
 async function videoPoll(operationId) {
   const state = await loadOperation(operationId);
-  if (state.status === "completed" && state.downloadPath && fs.existsSync(state.downloadPath)) return { done: true, downloadUri: state.downloadPath };
+  if (state.status === "completed" && state.downloadPath && fs.existsSync(state.downloadPath)) return { done: true, downloadUri: state.downloadPath, generationId: state.generationId || state.id };
   if (state.status === "failed") return { done: true, error: state.error || "Google Flow generation failed", errorCode: state.errorCode || "FLOW_GENERATION_FAILED", retryable: state.retryable === true, charged: state.charged };
   if (state.status === "submission-uncertain") return { done: true, error: "Submission state is uncertain. The bridge will not resubmit automatically because that could spend credits twice. Verify the existing Flow project before retrying.", errorCode: "SUBMISSION_UNCERTAIN", retryable: false };
   if (state.status === "verification-required") return { done: true, error: state.error || "Flow generation record is missing and requires verification before retrying.", errorCode: state.errorCode || "FLOW_GENERATION_RECORD_MISSING", retryable: false };
@@ -728,8 +887,9 @@ async function videoPoll(operationId) {
   const context = session.context;
   try {
     const page = context.pages()[0] || await context.newPage();
-    await page.goto(state.pageUrl || FLOW_URL, { waitUntil: "domcontentloaded", timeout: 45_000 });
-    await page.waitForTimeout(1500);
+    const targetUrl = state.pageUrl || FLOW_URL;
+    if (!page.url().startsWith(targetUrl)) await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await page.waitForTimeout(500);
     const pageState = await inspectPage(page);
     if (pageState.captcha) return { done: false, retryAfterMs: 30_000, errorCode: "CAPTCHA_REQUIRED" };
     if (pageState.authRequired || pageState.landing) {
@@ -739,6 +899,7 @@ async function videoPoll(operationId) {
     await markAuth(true, pageState.url);
     state.status = "processing";
     state.pageUrl = page.url();
+    pushEvent(state, "flow.poll", { generationId: state.generationId || state.id, projectUrl: state.pageUrl });
     await saveOperation(state);
 
     const downloaded = await tryDownload(page, operationId);
@@ -746,8 +907,9 @@ async function videoPoll(operationId) {
       state.status = "completed";
       state.completedAt = nowIso();
       state.downloadPath = downloaded;
+      pushEvent(state, "flow.download.completed", { generationId: state.generationId || state.id, downloadPath: downloaded });
       await saveOperation(state);
-      return { done: true, downloadUri: downloaded };
+      return { done: true, downloadUri: downloaded, generationId: state.generationId || state.id };
     }
 
     const body = await page.locator("body").innerText().catch(() => pageState.body || "");

@@ -18,7 +18,7 @@ const schemas: Record<string, Schema> = {
     anchorPrompt: str(), shotPrompts: arr(str()), dialogues: arr(str()), outputPath: str(), subtitlePath: str(), compose: bool(), finalEditor: editor,
     generateVoice: bool(), voiceProvider: apiProvider, voiceLanguage: str(), voiceSpeed: num(), voiceStyle: str(),
     generateMusic: bool(), musicProvider: apiProvider, musicPrompt: str(), musicMood: str(),
-    autoRewriteGuardrails: bool(), videoConcurrency: num("1-4 for API/local/native providers; browser providers remain serial"), idempotencyKey: str(), timeoutMs: num()
+    autoRewriteGuardrails: bool(), videoConcurrency: num("1-4 for API/local/native providers; Flow browser/native FAST mode remains serial"), fastFlowMode: bool("Reuse one Flow project/session, settings and uploaded reference assets across movie shots; defaults true for flow-native"), usePersistentFlowSession: bool("Keep using the dedicated Ceo Flow browser session/project between shots; defaults true for flow-native"), idempotencyKey: str(), timeoutMs: num()
   }, ["name", "brief", "character"]),
   "media.movie.status": obj({ jobId: str() }, ["jobId"]),
   "media.movie.manifest": obj({ jobId: str() }, ["jobId"]),
@@ -45,7 +45,7 @@ const schemas: Record<string, Schema> = {
   "media.character.lock": obj({ projectId: str(), name: str(), description: str(), wardrobe: str(), voice: str(), referenceImages: arr(str()), continuityTags: arr(str()) }, ["projectId", "name", "description"]),
   "media.storyboard.plan": obj({ projectId: str(), title: str(), brief: str(), totalDurationSec: num(), aspectRatio: aspect, maxShotSec: num() }, ["projectId", "totalDurationSec"]),
   "media.image.generate": obj({ projectId: str(), name: str(), prompt: str(), provider, outputPath: str(), aspectRatio: aspect, referenceImages: arr(str()), idempotencyKey: str(), autoRewriteGuardrails: bool() }, ["prompt"]),
-  "media.video.generate": obj({ projectId: str(), name: str(), prompt: str(), provider, outputPath: str(), aspectRatio: aspect, resolution, durationSec: num(), referenceImages: arr(str()), firstFrame: str(), lastFrame: str(), idempotencyKey: str(), autoRewriteGuardrails: bool() }, ["prompt"]),
+  "media.video.generate": obj({ projectId: str(), name: str(), prompt: str(), provider, outputPath: str(), aspectRatio: aspect, resolution, durationSec: num(), referenceImages: arr(str()), firstFrame: str(), lastFrame: str(), fastFlowMode: bool(), usePersistentFlowSession: bool(), flowSessionKey: str(), flowProjectKey: str(), idempotencyKey: str(), autoRewriteGuardrails: bool() }, ["prompt"]),
   "media.video.regenerate": obj({ jobId: str(), prompt: str(), provider: apiProvider, outputPath: str(), idempotencyKey: str() }, ["jobId"]),
   "media.audio.voice": obj({ projectId: str(), name: str(), text: str(), provider: apiProvider, outputPath: str(), voice: str(), language: str(), speed: num(), style: str(), idempotencyKey: str() }, ["text"]),
   "media.audio.music": obj({ projectId: str(), name: str(), prompt: str(), provider: apiProvider, outputPath: str(), durationSec: num(), mood: str(), instrumental: bool(), idempotencyKey: str() }, ["prompt"]),

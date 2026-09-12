@@ -91,17 +91,19 @@ export class FlowNativeProvider implements MediaProvider {
     if (!outputPath) throw new ProviderError("Flow Native image.generate returned no outputPath", { code: "INVALID_RESPONSE" });
     return { outputPath };
   }
-  async startVideo(request: VideoRequest): Promise<{ operationId: string }> {
+  async startVideo(request: VideoRequest): Promise<{ operationId: string; generationId?: string }> {
     const result = await invokeFlowNative("video.start", request as unknown as Record<string, unknown>);
     const operationId = String(result.operationId || "");
     if (!operationId) throw new ProviderError("Flow Native video.start returned no operationId", { code: "INVALID_RESPONSE" });
-    return { operationId };
+    const generationId = result.generationId ? String(result.generationId) : undefined;
+    return { operationId, generationId };
   }
   async pollVideo(operationId: string): Promise<VideoPollResult> {
     const result = await invokeFlowNative("video.poll", { operationId });
     return {
       done: Boolean(result.done),
       downloadUri: result.downloadUri ? String(result.downloadUri) : undefined,
+      generationId: result.generationId ? String(result.generationId) : undefined,
       error: result.error ? String(result.error) : undefined,
       errorCode: result.errorCode ? String(result.errorCode) : undefined,
       retryable: result.retryable == null ? undefined : Boolean(result.retryable),
