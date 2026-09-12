@@ -18,6 +18,7 @@ const requestDir = path.join(stateRoot, "requests");
 const downloadDir = path.join(stateRoot, "downloads");
 const sessionDir = path.join(stateRoot, "sessions");
 const assetCacheFile = path.join(stateRoot, "asset-cache.json");
+const activeFlowFile = path.join(stateRoot, "active-flow.json");
 const submissionLockFile = path.join(stateRoot, "submission.lock.json");
 const AUTH_TTL_MS = Math.max(60_000, Number(process.env.CEO_MEDIA_FLOW_AUTH_TTL_MS || 12 * 60 * 60 * 1000));
 const INTERACTIVE_CDP_PORT = Math.max(1024, Number(process.env.CEO_MEDIA_FLOW_CDP_PORT || 9223));
@@ -70,6 +71,24 @@ function isFlowProjectUrl(value) {
 function flowHomeForUrl(value) {
   const match = String(value || "").match(/^(https?:\/\/flow\.google\.com\/)(u\/\d+\/)/i);
   return match ? `${match[1]}${match[2]}` : FLOW_URL;
+}
+
+async function loadPinnedFlow() {
+  const pinned = await readJson(activeFlowFile);
+  return pinned && isFlowProjectUrl(pinned.projectUrl) ? pinned : null;
+}
+
+async function pinFlowProject(projectUrl, details = {}) {
+  if (!isFlowProjectUrl(projectUrl)) return null;
+  const accountMatch = String(projectUrl).match(/\/u\/(\d+)\//i);
+  const value = {
+    projectUrl: String(projectUrl),
+    accountSlot: accountMatch ? Number(accountMatch[1]) : null,
+    pinnedAt: nowIso(),
+    ...details
+  };
+  await writeJson(activeFlowFile, value);
+  return value;
 }
 
 function sessionFile(input = {}) {
@@ -234,12 +253,14 @@ async function launchInteractiveSession() {
 
 async function pickFlowPage(context, preferredUrl = "") {
   const pages = context.pages();
-  const preferred = String(preferredUrl || "");
+  const pinned = await loadPinnedFlow();
+  const preferred = String(preferredUrl || pinned?.projectUrl || "");
   const ranked = pages
     .map((page, index) => {
       const url = page.url();
       let score = 0;
-      if (preferred && url.startsWith(preferred)) score += 100;
+      if (preferred && url === preferred) score += 120;
+      else if (preferred && url.startsWith(preferred)) score += 100;
       if (isFlowProjectUrl(url)) score += 50;
       else if (/flow\.google\.com/i.test(url)) score += 20;
       if (/flow\.google\.com\/about/i.test(url)) score -= 10;
@@ -247,6 +268,10 @@ async function pickFlowPage(context, preferredUrl = "") {
     })
     .sort((a, b) => b.score - a.score || b.index - a.index);
   const selected = ranked.find((item) => item.score > 0)?.page || pages[0] || await context.newPage();
+  if (preferred && isFlowProjectUrl(preferred) && !selected.url().startsWith(preferred) && /flow\.google\.com/i.test(selected.url())) {
+    await selected.goto(preferred, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await selected.waitForTimeout(700);
+  }
   await selected.bringToFront().catch(() => {});
   return selected;
 }
@@ -346,6 +371,7 @@ async function authCheck() {
     let state = await inspectPage(page);
     if (!state.app && !state.captcha && !state.authRequired) state = await enterFlow(page);
     const authenticated = state.app && !state.captcha && !state.authRequired;
+    if (authenticated && isFlowProjectUrl(page.url())) await pinFlowProject(page.url(), { source: "auth-check" });
     const saved = await markAuth(authenticated, state.url, { captcha: state.captcha, landing: state.landing });
     return { ...saved, profileDir, cdpUrl: INTERACTIVE_CDP_URL, sessionMode: session.mode, attachedExistingWindow: session.reusedBrowser === true, pageUrl: page.url(), reason: authenticated ? "Google Flow visible browser session is ready" : state.captcha ? "CAPTCHA requires manual completion" : "Google sign-in is required" };
   } finally {
@@ -694,6 +720,7 @@ async function prepareVideoPage(page, request) {
   if (!promptBox) throw new Error("[FLOW_UI_CHANGED] Could not locate the Google Flow prompt editor after opening a project");
 
   const projectUrl = page.url();
+  if (isFlowProjectUrl(projectUrl)) await pinFlowProject(projectUrl, { source: "prepare" });
   const settingsDigest = hash({ aspectRatio: request.aspectRatio || null, resolution: request.resolution || null, durationSec: request.durationSec || null, model: process.env.CEO_MEDIA_FLOW_VIDEO_MODEL || "" });
   let settings;
   if (fastFlowMode && fastSession?.projectUrl === projectUrl && fastSession?.settingsDigest === settingsDigest) {
